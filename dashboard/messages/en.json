@@ -630,6 +630,7 @@
     "fieldPrefixHint": "Model name prefix for routing",
     "modelMappingsLabel": "Model Mappings",
     "addModelButton": "+ Add Model",
+    "deleteAllModelsButton": "Delete All",
     "modelUpstreamPlaceholder": "gpt-4",
     "modelAliasPlaceholder": "custom-gpt-4",
     "modelMappingsHint": "Map upstream model names to aliases",

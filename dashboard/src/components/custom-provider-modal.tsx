@@ -248,6 +248,10 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     setModels(models.filter((_, i) => i !== index));
   };
 
+  const deleteAllModelMappings = () => {
+    setModels([{ _id: nextId(), upstreamName: "", alias: "" }]);
+  };
+
   const updateModelMapping = (index: number, field: 'upstreamName' | 'alias', value: string) => {
     const updated = [...models];
     const model = updated[index];
@@ -422,6 +426,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
             error={errors.models}
             onAddModelMapping={addModelMapping}
             onRemoveModelMapping={removeModelMapping}
+            onDeleteAllModelMappings={deleteAllModelMappings}
             onUpdateModelMapping={updateModelMapping}
           />
 

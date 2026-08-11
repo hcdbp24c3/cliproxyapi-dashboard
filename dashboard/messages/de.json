@@ -630,6 +630,7 @@
     "fieldPrefixHint": "Modellnamenpräfix für das Routing",
     "modelMappingsLabel": "Modellzuordnungen",
     "addModelButton": "+ Modell hinzufügen",
+    "deleteAllModelsButton": "Alle löschen",
     "modelUpstreamPlaceholder": "gpt-4",
     "modelAliasPlaceholder": "custom-gpt-4",
     "modelMappingsHint": "Upstream-Modellnamen Aliasen zuordnen",
