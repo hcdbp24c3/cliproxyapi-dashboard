@@ -167,32 +167,52 @@ model SystemSetting {
 }
 
 model CustomProvider {
-  id          String   @id @default(cuid())
-  userId      String
-  groupId     String?                   // Optional: assign to a group
-  sortOrder   Int      @default(0)      // Priority order within group (or globally if ungrouped)
-  name        String                    // Display name (e.g., "OpenRouter")
-  providerId  String   @unique          // URL-safe ID (e.g., "openrouter-custom")
-  baseUrl     String                    // https://openrouter.ai/api/v1
-  apiKeyHash      String?                   // Hashed for identification (null when provider has no API key, e.g. Ollama)
-  apiKeyEncrypted String?                   // AES-256-GCM encrypted, for re-sync after proxy restart
-  prefix      String?                   // Optional routing prefix
-  proxyUrl    String?                   // Optional SOCKS5/HTTP proxy
-  headers     Json?     @default("{}")  // Custom headers JSON
-  createdAt   DateTime @default(now())
-  isShared    Boolean  @default(false) // Admin-shared providers are visible to all users
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  groupId    String?                   // Optional: assign to a group
+  sortOrder  Int      @default(0)      // Priority order within group (or globally if ungrouped)
+  name       String                    // Display name (e.g., "OpenRouter")
+  providerId String   @unique          // URL-safe ID (e.g., "openrouter-custom")
+  baseUrl    String                    // https://openrouter.ai/api/v1
+  prefix     String?                   // Optional routing prefix
+  proxyUrl   String?                   // Optional SOCKS5/HTTP proxy
+  headers    Json?     @default("{}")  // Custom headers JSON
+  createdAt  DateTime @default(now())
+  isShared   Boolean  @default(false) // Admin-shared providers are visible to all users
+  updatedAt  DateTime @updatedAt
   
   user           User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
   group          ProviderGroup?                @relation(fields: [groupId], references: [id], onDelete: SetNull)
   models         CustomProviderModel[]
   excludedModels CustomProviderExcludedModel[]
+  keys           CustomProviderKey[]
   
   @@index([userId])
   @@index([isShared])
   @@index([groupId])
   @@index([providerId])
   @@map("custom_providers")
+}
+
+// Pool keys: one row per API key entry for a custom provider. Mirrors the
+// "api-key-entries" list of CLIProxyAPI's openai-compatibility config, including
+// optional per-key weight (weighted-round-robin share) and per-key proxy override.
+model CustomProviderKey {
+  id               String   @id @default(cuid())
+  customProviderId String
+  apiKeyHash       String                   // SHA-256 hex for identification
+  apiKeyEncrypted  String?                  // AES-256-GCM encrypted, for re-sync after proxy restart; null = legacy hash-only key (operator must re-enter)
+  weight           Int?                     // Optional weighted-round-robin share (1..1_000_000); null = default 1
+  proxyUrl         String?                  // Optional per-key SOCKS5/HTTP proxy override
+  enabled          Boolean  @default(true)  // Disabled keys are excluded from proxy sync
+  sortOrder        Int      @default(0)     // Order within the provider's api-key-entries list
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customProvider CustomProvider @relation(fields: [customProviderId], references: [id], onDelete: Cascade)
+
+  @@index([customProviderId])
+  @@map("custom_provider_keys")
 }
 
 model ProviderGroup {
