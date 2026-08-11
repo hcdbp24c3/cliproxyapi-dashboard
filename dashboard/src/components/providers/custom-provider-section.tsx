@@ -25,6 +25,14 @@ interface ModelMapping {
   alias: string;
 }
 
+export interface CustomProviderKey {
+  id: string;
+  enabled: boolean;
+  weight: number | null;
+  proxyUrl: string | null;
+  sortOrder: number;
+}
+
 export interface CustomProvider {
   id: string;
   name: string;
@@ -37,7 +45,8 @@ export interface CustomProvider {
   excludedModels: { pattern: string }[];
   groupId: string | null;
   sortOrder: number;
-  hasEncryptedKey: boolean;
+  hasKeys: boolean;
+  keys?: CustomProviderKey[];
   isShared?: boolean;
   isOwn?: boolean;
   ownerUsername?: string | null;

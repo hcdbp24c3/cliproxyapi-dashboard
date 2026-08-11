@@ -36,7 +36,7 @@ export function ProviderRow({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium text-[var(--text-primary)]">{provider.name}</p>
-          {!provider.hasEncryptedKey && (
+          {!provider.hasKeys && (
             <span
               title={t("resaveBadgeTitle")}
               className="shrink-0 rounded-sm border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
