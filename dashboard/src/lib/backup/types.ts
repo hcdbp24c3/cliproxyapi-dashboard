@@ -9,7 +9,9 @@ import type {
 export type { BackupRecord, BackupSchedule, BackupStatus, BackupType };
 
 // Backup file format version
-export const BACKUP_VERSION = "1.0";
+// 1.1: custom provider keys moved from scalar apiKeyHash/apiKeyEncrypted to a
+//      separate customProviderKeys array (pool keys refactor)
+export const BACKUP_VERSION = "1.1";
 
 // Maximum backup file size (100MB)
 export const MAX_BACKUP_SIZE = 100 * 1024 * 1024;
@@ -43,6 +45,7 @@ export interface BackupData {
     providerOAuthOwnerships: BackupProviderOAuthOwnership[];
     systemSettings: BackupSystemSetting[];
     customProviders: BackupCustomProvider[];
+    customProviderKeys: BackupCustomProviderKey[];
     providerGroups: BackupProviderGroup[];
     customProviderModels: BackupCustomProviderModel[];
     customProviderExcludedModels: BackupCustomProviderExcludedModel[];
@@ -154,6 +157,19 @@ export interface BackupSystemSetting {
   value: string;
 }
 
+export interface BackupCustomProviderKey {
+  id: string;
+  customProviderId: string;
+  apiKeyHash: string;
+  apiKeyEncrypted: string | null;
+  weight: number | null;
+  proxyUrl: string | null;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BackupCustomProvider {
   id: string;
   userId: string;
@@ -162,8 +178,6 @@ export interface BackupCustomProvider {
   name: string;
   providerId: string;
   baseUrl: string;
-  apiKeyHash: string | null;
-  apiKeyEncrypted: string | null;
   prefix: string | null;
   proxyUrl: string | null;
   headers: unknown | null;

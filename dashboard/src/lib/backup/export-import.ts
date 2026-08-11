@@ -16,6 +16,7 @@ import type {
   BackupProviderOAuthOwnership,
   BackupSystemSetting,
   BackupCustomProvider,
+  BackupCustomProviderKey,
   BackupProviderGroup,
   BackupCustomProviderModel,
   BackupCustomProviderExcludedModel,
@@ -181,8 +182,6 @@ export async function exportDatabase(exportedBy: string): Promise<BackupData> {
     name: cp.name,
     providerId: cp.providerId,
     baseUrl: cp.baseUrl,
-    apiKeyHash: cp.apiKeyHash,
-    apiKeyEncrypted: cp.apiKeyEncrypted,
     prefix: cp.prefix,
     proxyUrl: cp.proxyUrl,
     headers: cp.headers,
@@ -190,6 +189,22 @@ export async function exportDatabase(exportedBy: string): Promise<BackupData> {
     updatedAt: cp.updatedAt.toISOString(),
   }));
   modelCounts.customProviders = backupCustomProviders.length;
+
+  // Export custom provider keys
+  const customProviderKeys = await prisma.customProviderKey.findMany();
+  const backupCustomProviderKeys: BackupCustomProviderKey[] = customProviderKeys.map((cpk) => ({
+    id: cpk.id,
+    customProviderId: cpk.customProviderId,
+    apiKeyHash: cpk.apiKeyHash,
+    apiKeyEncrypted: cpk.apiKeyEncrypted,
+    weight: cpk.weight,
+    proxyUrl: cpk.proxyUrl,
+    enabled: cpk.enabled,
+    sortOrder: cpk.sortOrder,
+    createdAt: cpk.createdAt.toISOString(),
+    updatedAt: cpk.updatedAt.toISOString(),
+  }));
+  modelCounts.customProviderKeys = backupCustomProviderKeys.length;
 
   // Export provider groups
   const providerGroups = await prisma.providerGroup.findMany();
@@ -341,6 +356,7 @@ export async function exportDatabase(exportedBy: string): Promise<BackupData> {
       providerOAuthOwnerships: backupProviderOAuthOwnerships,
       systemSettings: backupSystemSettings,
       customProviders: backupCustomProviders,
+      customProviderKeys: backupCustomProviderKeys,
       providerGroups: backupProviderGroups,
       customProviderModels: backupCustomProviderModels,
       customProviderExcludedModels: backupCustomProviderExcludedModels,
@@ -382,6 +398,7 @@ export function parseBackupData(jsonString: string): BackupData {
     "providerOAuthOwnerships",
     "systemSettings",
     "customProviders",
+    "customProviderKeys",
     "providerGroups",
     "customProviderModels",
     "customProviderExcludedModels",
@@ -445,6 +462,7 @@ export async function importDatabase(backup: BackupData): Promise<void> {
     await tx.auditLog.deleteMany();
     await tx.customProviderExcludedModel.deleteMany();
     await tx.customProviderModel.deleteMany();
+    await tx.customProviderKey.deleteMany();
     await tx.customProvider.deleteMany();
     await tx.providerGroup.deleteMany();
     await tx.perplexityCookie.deleteMany();
@@ -631,13 +649,29 @@ export async function importDatabase(backup: BackupData): Promise<void> {
           name: cp.name,
           providerId: cp.providerId,
           baseUrl: cp.baseUrl,
-          apiKeyHash: cp.apiKeyHash,
-          apiKeyEncrypted: cp.apiKeyEncrypted,
           prefix: cp.prefix,
           proxyUrl: cp.proxyUrl,
           headers: cp.headers ?? undefined,
           createdAt: new Date(cp.createdAt),
           updatedAt: new Date(cp.updatedAt),
+        })),
+      });
+    }
+
+    // 12.5. Custom provider keys (after providers, FK dependency)
+    if (backup.data.customProviderKeys.length > 0) {
+      await tx.customProviderKey.createMany({
+        data: backup.data.customProviderKeys.map((cpk) => ({
+          id: cpk.id,
+          customProviderId: cpk.customProviderId,
+          apiKeyHash: cpk.apiKeyHash,
+          apiKeyEncrypted: cpk.apiKeyEncrypted ?? undefined,
+          weight: cpk.weight ?? undefined,
+          proxyUrl: cpk.proxyUrl ?? undefined,
+          enabled: cpk.enabled,
+          sortOrder: cpk.sortOrder,
+          createdAt: new Date(cpk.createdAt),
+          updatedAt: new Date(cpk.updatedAt),
         })),
       });
     }
