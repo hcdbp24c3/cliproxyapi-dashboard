@@ -323,6 +323,39 @@ async function migrate() {
         FOREIGN KEY ("customProviderId") REFERENCES "custom_providers"("id") ON DELETE CASCADE;
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+    -- Custom provider keys table (one row per API key entry for a custom provider, pool keys)
+    CREATE TABLE IF NOT EXISTS "custom_provider_keys" (
+      "id" TEXT NOT NULL,
+      "customProviderId" TEXT NOT NULL,
+      "apiKeyHash" TEXT NOT NULL,
+      "apiKeyEncrypted" TEXT,
+      "weight" INTEGER,
+      "proxyUrl" TEXT,
+      "enabled" BOOLEAN NOT NULL DEFAULT true,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "custom_provider_keys_pkey" PRIMARY KEY ("id")
+    );
+    CREATE INDEX IF NOT EXISTS "custom_provider_keys_customProviderId_idx" ON "custom_provider_keys"("customProviderId");
+    DO $$ BEGIN
+      ALTER TABLE "custom_provider_keys" ADD CONSTRAINT "custom_provider_keys_customProviderId_fkey"
+        FOREIGN KEY ("customProviderId") REFERENCES "custom_providers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    -- Backfill: migrate existing single keys on custom_providers into the new pool table.
+    -- Skipped gracefully on installs where the legacy columns were already dropped (prisma-migrated DBs).
+    DO $$ BEGIN
+      INSERT INTO "custom_provider_keys" ("id", "customProviderId", "apiKeyHash", "apiKeyEncrypted", "weight", "proxyUrl", "enabled", "sortOrder", "createdAt", "updatedAt")
+      SELECT gen_random_uuid()::text, "id", "apiKeyHash", "apiKeyEncrypted", NULL, "proxyUrl", true, 0, "createdAt", "updatedAt"
+      FROM "custom_providers"
+      WHERE "apiKeyHash" IS NOT NULL;
+    EXCEPTION WHEN undefined_column THEN NULL; END $$;
+    -- Drop legacy single-key columns from custom_providers (idempotent)
+    DO $$ BEGIN
+      ALTER TABLE "custom_providers" DROP COLUMN IF EXISTS "apiKeyHash";
+      ALTER TABLE "custom_providers" DROP COLUMN IF EXISTS "apiKeyEncrypted";
+    EXCEPTION WHEN others THEN NULL; END $$;
+
     -- Audit logs table (track admin actions for compliance and security)
     CREATE TABLE IF NOT EXISTS "audit_logs" (
       "id" TEXT NOT NULL,
