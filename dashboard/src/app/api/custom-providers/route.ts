@@ -30,6 +30,7 @@ export async function GET() {
       include: {
         models: true,
         excludedModels: true,
+        keys: true,
         user: { select: { id: true, username: true } }
       },
       orderBy: { sortOrder: "asc" }
@@ -56,7 +57,18 @@ export async function GET() {
           hasHeaders: Object.keys(rawHeaders).length > 0,
           models: p.models,
           excludedModels: p.excludedModels,
-          hasEncryptedKey: p.apiKeyEncrypted !== null,
+          hasKeys: (p.keys?.length ?? 0) > 0,
+          ...(canSeeSecrets ? {
+            keys: p.keys.map(k => ({
+              id: k.id,
+              enabled: k.enabled,
+              weight: k.weight,
+              proxyUrl: k.proxyUrl,
+              sortOrder: k.sortOrder,
+              createdAt: k.createdAt,
+              updatedAt: k.updatedAt,
+            })),
+          } : {}),
           isShared: p.isShared,
           isOwn,
           ownerId: p.user.id,
@@ -115,18 +127,30 @@ export async function POST(request: NextRequest) {
       return Errors.conflict("Provider ID already taken");
     }
 
+    const keyInputs = validated.keys && validated.keys.length > 0
+      ? validated.keys
+      : (validated.apiKey ? [{ apiKey: validated.apiKey }] : []);
+
     const provider = await prisma.customProvider.create({
       data: {
         userId: session.userId,
         name: validated.name,
         providerId: validated.providerId,
         baseUrl: validated.baseUrl,
-        apiKeyHash: validated.apiKey ? hashProviderKey(validated.apiKey) : null,
-        apiKeyEncrypted: validated.apiKey ? (encryptProviderKey(validated.apiKey) ?? undefined) : null,
         prefix: validated.prefix,
         proxyUrl: validated.proxyUrl,
         headers: validated.headers ? (validated.headers as Record<string, string>) : {},
         isShared: validated.isShared === true,
+        keys: {
+          create: keyInputs.map((k, index) => ({
+            apiKeyHash: hashProviderKey(k.apiKey),
+            apiKeyEncrypted: encryptProviderKey(k.apiKey) ?? undefined,
+            weight: k.weight ?? undefined,
+            proxyUrl: k.proxyUrl ?? undefined,
+            enabled: true,
+            sortOrder: index,
+          })),
+        },
         models: {
           create: validated.models.map(m => ({
             upstreamName: m.upstreamName,
@@ -139,7 +163,8 @@ export async function POST(request: NextRequest) {
       },
       include: {
         models: true,
-        excludedModels: true
+        excludedModels: true,
+        keys: true
       }
     });
 
@@ -160,14 +185,33 @@ export async function POST(request: NextRequest) {
       providerId: provider.providerId,
       prefix: provider.prefix,
       baseUrl: provider.baseUrl,
-      apiKey: validated.apiKey ?? "",
+      apiKeyEntries: keyInputs.map(k => ({
+        apiKey: k.apiKey,
+        weight: k.weight ?? null,
+        proxyUrl: k.proxyUrl ?? null,
+      })),
       proxyUrl: provider.proxyUrl,
       headers: provider.headers as Record<string, string> | null,
       models: provider.models,
       excludedModels: provider.excludedModels
     }, "create");
 
-    return NextResponse.json({ provider, syncStatus, syncMessage }, { status: 201 });
+    return NextResponse.json({
+      provider: {
+        ...provider,
+        keys: provider.keys.map(k => ({
+          id: k.id,
+          enabled: k.enabled,
+          weight: k.weight,
+          proxyUrl: k.proxyUrl,
+          sortOrder: k.sortOrder,
+          createdAt: k.createdAt,
+          updatedAt: k.updatedAt,
+        })),
+      },
+      syncStatus,
+      syncMessage,
+    }, { status: 201 });
 
   } catch (error) {
     if (error instanceof z.ZodError) {

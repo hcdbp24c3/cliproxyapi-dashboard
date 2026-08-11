@@ -9,7 +9,8 @@ import { invalidateProxyModelsCache } from "@/lib/cache";
 import { AUDIT_ACTION, extractIpAddress, logAuditAsync } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { syncCustomProviderToProxy } from "@/lib/providers/custom-provider-sync";
+import { syncCustomProviderToProxy, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
+import { CustomProviderKeySchema } from "@/lib/validation/schemas";
 import { Errors, apiSuccess } from "@/lib/errors";
 import { isUserAdmin } from "@/lib/auth/admin";
 
@@ -29,6 +30,7 @@ const UpdateCustomProviderSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   baseUrl: z.string().url("Base URL must be a valid URL (http:// or https://)").optional(),
   apiKey: z.string().min(1).optional(),
+  keys: z.array(CustomProviderKeySchema).optional(),
   prefix: z.string().optional(),
   proxyUrl: z.string().optional(),
   groupId: z.string().nullable().optional(),
@@ -122,6 +124,10 @@ export async function PATCH(
       }
     }
 
+    const keyInputs = validated.keys && validated.keys.length > 0
+      ? validated.keys
+      : (validated.apiKey ? [{ apiKey: validated.apiKey }] : null);
+
     const provider = await prisma.$transaction(async (tx) => {
       if (validated.models) {
         await tx.customProviderModel.deleteMany({
@@ -140,9 +146,18 @@ export async function PATCH(
         data: {
           name: validated.name,
           baseUrl: validated.baseUrl,
-          ...(validated.apiKey ? {
-            apiKeyHash: hashProviderKey(validated.apiKey),
-            apiKeyEncrypted: encryptProviderKey(validated.apiKey) ?? undefined,
+          ...(keyInputs ? {
+            keys: {
+              deleteMany: {},
+              create: keyInputs.map((k, index) => ({
+                apiKeyHash: hashProviderKey(k.apiKey),
+                apiKeyEncrypted: encryptProviderKey(k.apiKey) ?? undefined,
+                weight: k.weight ?? undefined,
+                proxyUrl: k.proxyUrl ?? undefined,
+                enabled: true,
+                sortOrder: index,
+              })),
+            },
           } : {}),
           prefix: validated.prefix,
           proxyUrl: validated.proxyUrl,
@@ -161,82 +176,49 @@ export async function PATCH(
         },
         include: {
           models: true,
-          excludedModels: true
+          excludedModels: true,
+          keys: true
         }
       });
     });
 
-    let resolvedApiKey: string | undefined = validated.apiKey;
-    let keyResolved = resolvedApiKey !== undefined;
-    let prefetchedConfig: ManagementProviderEntry[] | undefined;
+    // Keyless providers sync with an empty entry list; legacy hash-only keys
+    // block the sync until the operator re-enters them (see resync.ts).
+    const apiKeyEntries: SyncProviderKeyEntry[] = [];
+    let syncBlockedReason: string | null = null;
 
-    if (!keyResolved) {
-      if (provider.apiKeyEncrypted) {
-        const decrypted = decryptProviderKey(provider.apiKeyEncrypted);
-        if (decrypted !== null) {
-          resolvedApiKey = decrypted;
-          keyResolved = true;
-        } else {
-          logger.error({ providerId: provider.providerId }, "Failed to decrypt stored API key");
-        }
-      } else if (provider.apiKeyHash === null) {
-        // Provider was intentionally created without an API key (e.g. Ollama).
-        resolvedApiKey = "";
-        keyResolved = true;
+    for (const key of provider.keys) {
+      if (!key.enabled) continue;
+
+      if (!key.apiKeyEncrypted) {
+        syncBlockedReason = "Provider has a legacy key without an encrypted copy - re-enter the key to enable sync";
+        break;
       }
 
-      if (!keyResolved) {
-        const managementUrl = env.CLIPROXYAPI_MANAGEMENT_URL;
-        const secretKey = env.MANAGEMENT_API_KEY;
-
-        if (secretKey) {
-          try {
-            const getRes = await fetchWithTimeout(`${managementUrl}/openai-compatibility`, {
-              headers: { "Authorization": `Bearer ${secretKey}` }
-            });
-
-            if (getRes.ok) {
-              const configData = (await getRes.json()) as Record<string, unknown>;
-              const openAiCompatibility = configData["openai-compatibility"];
-              const currentList: ManagementProviderEntry[] = Array.isArray(openAiCompatibility)
-                ? openAiCompatibility.filter(isManagementProviderEntry)
-                : [];
-
-              prefetchedConfig = currentList;
-
-              const currentEntry = currentList.find((entry) => entry.name === provider.providerId);
-              const apiKeyEntries = currentEntry?.["api-key-entries"];
-              if (Array.isArray(apiKeyEntries) && apiKeyEntries.length > 0) {
-                const firstEntry = apiKeyEntries[0];
-                if (firstEntry && typeof firstEntry["api-key"] === "string") {
-                  resolvedApiKey = firstEntry["api-key"];
-                  keyResolved = true;
-                }
-              }
-            } else {
-              await getRes.body?.cancel();
-            }
-          } catch (err) {
-            logger.error({ err }, "Failed to retrieve existing API key from live proxy");
-          }
-        }
+      const decrypted = decryptProviderKey(key.apiKeyEncrypted);
+      if (!decrypted) {
+        syncBlockedReason = "Failed to decrypt stored API key";
+        logger.error({ providerId: provider.providerId, keyId: key.id }, "Failed to decrypt stored API key");
+        break;
       }
+
+      apiKeyEntries.push({ apiKey: decrypted, weight: key.weight, proxyUrl: key.proxyUrl });
     }
 
     let syncStatus: "ok" | "failed" = "ok";
     let syncMessage: string | undefined;
 
-    if (keyResolved) {
+    if (!syncBlockedReason) {
       const syncResult = await syncCustomProviderToProxy({
         providerId: provider.providerId,
         prefix: provider.prefix,
         baseUrl: provider.baseUrl,
-        apiKey: resolvedApiKey ?? "",
+        apiKeyEntries,
         proxyUrl: provider.proxyUrl,
         headers: provider.headers as Record<string, string> | null,
         models: provider.models,
         excludedModels: provider.excludedModels
-      }, "update", prefetchedConfig);
+      }, "update");
 
       syncStatus = syncResult.syncStatus;
       syncMessage = syncResult.syncMessage;

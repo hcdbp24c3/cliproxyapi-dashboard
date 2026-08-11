@@ -17,8 +17,6 @@ interface ProviderRecord {
   name: string;
   providerId: string;
   baseUrl: string;
-  apiKeyHash: string | null;
-  apiKeyEncrypted: string | null;
   prefix: string | null;
   proxyUrl: string | null;
   headers: unknown;
@@ -27,6 +25,18 @@ interface ProviderRecord {
   updatedAt: Date;
   models: { id: string; customProviderId: string; upstreamName: string; alias: string }[];
   excludedModels: { id: string; customProviderId: string; pattern: string }[];
+  keys: {
+    id: string;
+    customProviderId: string;
+    apiKeyHash: string;
+    apiKeyEncrypted: string | null;
+    weight: number | null;
+    proxyUrl: string | null;
+    enabled: boolean;
+    sortOrder: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
   user: { id: string; username: string };
 }
 
@@ -52,7 +62,18 @@ function sanitizeProvider(p: ProviderRecord, viewerUserId: string, isAdmin: bool
     hasHeaders: Object.keys(rawHeaders).length > 0,
     models: p.models,
     excludedModels: p.excludedModels,
-    hasEncryptedKey: p.apiKeyEncrypted !== null,
+    hasKeys: (p.keys?.length ?? 0) > 0,
+    ...(canSeeSecrets ? {
+      keys: p.keys.map(k => ({
+        id: k.id,
+        enabled: k.enabled,
+        weight: k.weight,
+        proxyUrl: k.proxyUrl,
+        sortOrder: k.sortOrder,
+        createdAt: k.createdAt,
+        updatedAt: k.updatedAt,
+      })),
+    } : {}),
     isShared: p.isShared,
     isOwn,
     ownerId: p.user.id,
@@ -78,6 +99,7 @@ export async function GET() {
             include: {
               models: true,
               excludedModels: true,
+              keys: true,
               user: { select: { id: true, username: true } },
             },
             orderBy: { sortOrder: "asc" },
@@ -96,6 +118,7 @@ export async function GET() {
         include: {
           models: true,
           excludedModels: true,
+          keys: true,
           user: { select: { id: true, username: true } },
         },
         orderBy: { sortOrder: "asc" },
@@ -110,6 +133,7 @@ export async function GET() {
         include: {
           models: true,
           excludedModels: true,
+          keys: true,
           user: { select: { id: true, username: true } },
         },
         orderBy: { sortOrder: "asc" },

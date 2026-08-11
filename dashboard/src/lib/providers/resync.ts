@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { decryptProviderKey } from "@/lib/providers/encrypt";
-import { syncCustomProviderToProxy } from "@/lib/providers/custom-provider-sync";
+import { syncCustomProviderToProxy, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
 import { invalidateProxyModelsCache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 
@@ -14,7 +14,7 @@ export interface ResyncResult {
 export async function resyncCustomProviders(userId?: string): Promise<ResyncResult[]> {
   const providers = await prisma.customProvider.findMany({
     where: userId ? { userId } : undefined,
-    include: { models: true, excludedModels: true },
+    include: { models: true, excludedModels: true, keys: true },
     orderBy: { sortOrder: "asc" },
   });
 
@@ -23,28 +23,39 @@ export async function resyncCustomProviders(userId?: string): Promise<ResyncResu
   const results: ResyncResult[] = [];
 
   for (const provider of providers) {
-    // Keyless providers (e.g. local Ollama): apiKeyHash is null by design.
+    // Keyless providers (e.g. local Ollama): no enabled keys in the pool.
     // Sync them with an empty key — Management API payload shape stays stable
     // and downstream consumers see a consistent "api-key-entries": [{ "api-key": "" }].
-    // See PATCH /api/custom-providers/[id] for the matching read-path logic.
-    const isKeyless = provider.apiKeyHash === null;
-    let apiKey = "";
+    const enabledKeys = provider.keys.filter(k => k.enabled);
+    const apiKeyEntries: SyncProviderKeyEntry[] = [];
 
-    if (!isKeyless) {
-      if (!provider.apiKeyEncrypted) {
+    let skipReason: string | null = null;
+    let failReason: string | null = null;
+
+    for (const key of enabledKeys) {
+      if (!key.apiKeyEncrypted) {
         // Legacy row: hash was stored before encryption landed. Operator must
         // re-enter the key once so we can encrypt it; skip for now.
-        results.push({ providerId: provider.providerId, name: provider.name, status: "skipped", reason: "no_encrypted_key" });
-        continue;
+        skipReason = "no_encrypted_key";
+        break;
       }
 
-      const decrypted = decryptProviderKey(provider.apiKeyEncrypted);
+      const decrypted = decryptProviderKey(key.apiKeyEncrypted);
       if (!decrypted) {
-        results.push({ providerId: provider.providerId, name: provider.name, status: "failed", reason: "decrypt_failed" });
-        logger.error({ providerId: provider.providerId }, "Resync: failed to decrypt API key");
-        continue;
+        failReason = "decrypt_failed";
+        logger.error({ providerId: provider.providerId, keyId: key.id }, "Resync: failed to decrypt API key");
+        break;
       }
-      apiKey = decrypted;
+      apiKeyEntries.push({ apiKey: decrypted, weight: key.weight, proxyUrl: key.proxyUrl });
+    }
+
+    if (skipReason) {
+      results.push({ providerId: provider.providerId, name: provider.name, status: "skipped", reason: skipReason });
+      continue;
+    }
+    if (failReason) {
+      results.push({ providerId: provider.providerId, name: provider.name, status: "failed", reason: failReason });
+      continue;
     }
 
     try {
@@ -52,7 +63,7 @@ export async function resyncCustomProviders(userId?: string): Promise<ResyncResu
         providerId: provider.providerId,
         prefix: provider.prefix,
         baseUrl: provider.baseUrl,
-        apiKey,
+        apiKeyEntries,
         proxyUrl: provider.proxyUrl,
         headers: provider.headers as Record<string, string> | null,
         models: provider.models,

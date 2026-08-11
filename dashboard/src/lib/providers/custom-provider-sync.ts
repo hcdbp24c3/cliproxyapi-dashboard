@@ -15,11 +15,17 @@ async function fetchWithTimeout(url: string, options: RequestInit): Promise<Resp
   }
 }
 
+export interface SyncProviderKeyEntry {
+  apiKey: string;
+  weight?: number | null;
+  proxyUrl?: string | null;
+}
+
 export interface SyncProviderData {
   providerId: string;
   prefix?: string | null;
   baseUrl: string;
-  apiKey: string;
+  apiKeyEntries: SyncProviderKeyEntry[];
   proxyUrl?: string | null;
   headers?: Record<string, string> | null;
   models: Array<{ upstreamName: string; alias: string }>;
@@ -91,14 +97,21 @@ export async function syncCustomProviderToProxy(
         : [];
     }
 
+    // Keyless providers (e.g. local Ollama) have no enabled keys: keep the
+    // Management API payload shape stable with a single empty entry.
+    const apiKeyEntries = providerData.apiKeyEntries.length > 0
+      ? providerData.apiKeyEntries
+      : [{ apiKey: "" }];
+
     const newEntry = {
       name: providerData.providerId,
       prefix: providerData.prefix,
       "base-url": providerData.baseUrl,
-      "api-key-entries": [{ 
-        "api-key": providerData.apiKey,
-        ...(providerData.proxyUrl ? { "proxy-url": providerData.proxyUrl } : {})
-      }],
+      "api-key-entries": apiKeyEntries.map(entry => ({
+        "api-key": entry.apiKey,
+        ...(entry.weight !== undefined && entry.weight !== null ? { weight: entry.weight } : {}),
+        ...((entry.proxyUrl ?? providerData.proxyUrl) ? { "proxy-url": entry.proxyUrl ?? providerData.proxyUrl } : {})
+      })),
       models: providerData.models.map(m => ({ name: m.upstreamName, alias: m.alias })),
       "excluded-models": providerData.excludedModels.map(e => e.pattern),
       ...(providerData.headers ? { headers: providerData.headers } : {})

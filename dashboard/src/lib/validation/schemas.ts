@@ -289,11 +289,18 @@ export const FetchModelsSchema = z.object({
   apiKey: z.string().optional()
 });
 
+export const CustomProviderKeySchema = z.object({
+  apiKey: z.string().min(1, "API key is required"),
+  weight: z.number().int().positive().optional().nullable(),
+  proxyUrl: z.string().url("Proxy URL must be a valid URL (http:// or https://)").optional().nullable()
+});
+
 export const CreateCustomProviderSchema = z.object({
   name: z.string().min(1).max(100),
   providerId: z.string().regex(/^[a-z0-9-]+$/, "Provider ID must be lowercase alphanumeric with hyphens"),
   baseUrl: z.string().url("Base URL must be a valid URL (http:// or https://)"),
   apiKey: z.string().optional(),
+  keys: z.array(CustomProviderKeySchema).optional(),
   prefix: z.string().optional(),
   proxyUrl: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),

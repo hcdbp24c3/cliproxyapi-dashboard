@@ -6,6 +6,7 @@ import { Errors } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { syncCustomProviderToProxy } from "@/lib/providers/custom-provider-sync";
 import { hashProviderKey } from "@/lib/providers/hash";
+import { encryptProviderKey } from "@/lib/providers/encrypt";
 import { isPerplexityEnabled } from "@/lib/providers/perplexity";
 import { logger } from "@/lib/logger";
 
@@ -56,10 +57,17 @@ async function syncPerplexityProvider(
         providerId: "perplexity-pro",
         name: "Perplexity Pro",
         baseUrl: SIDECAR_BASE_URL,
-        apiKeyHash: hashProviderKey("sk-perplexity-sidecar"),
         prefix: null,
         proxyUrl: null,
         headers: {},
+        keys: {
+          create: [{
+            apiKeyHash: hashProviderKey("sk-perplexity-sidecar"),
+            apiKeyEncrypted: encryptProviderKey("sk-perplexity-sidecar") ?? undefined,
+            enabled: true,
+            sortOrder: 0,
+          }],
+        },
         models: { create: models },
         excludedModels: { create: [] },
       },
@@ -69,7 +77,7 @@ async function syncPerplexityProvider(
       {
         providerId: "perplexity-pro",
         baseUrl: SIDECAR_BASE_URL,
-        apiKey: "sk-perplexity-sidecar",
+        apiKeyEntries: [{ apiKey: "sk-perplexity-sidecar" }],
         models,
         excludedModels: [],
       },
@@ -107,7 +115,7 @@ async function syncPerplexityProvider(
     {
       providerId: "perplexity-pro",
       baseUrl: SIDECAR_BASE_URL,
-      apiKey: "sk-perplexity-sidecar",
+      apiKeyEntries: [{ apiKey: "sk-perplexity-sidecar" }],
       models,
       excludedModels: [],
     },

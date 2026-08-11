@@ -97,7 +97,7 @@ describe("GET /api/custom-providers (shared providers)", () => {
         headers: {},
         models: [],
         excludedModels: [],
-        apiKeyEncrypted: "enc",
+        keys: [],
         isShared: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -132,7 +132,7 @@ describe("GET /api/custom-providers (shared providers)", () => {
         headers: {},
         models: [],
         excludedModels: [],
-        apiKeyEncrypted: "enc",
+        keys: [],
         isShared: false,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -160,7 +160,7 @@ describe("GET /api/custom-providers (shared providers)", () => {
         headers: { "x-api-key": "super-secret" },
         models: [],
         excludedModels: [],
-        apiKeyEncrypted: "enc",
+        keys: [],
         isShared: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -194,7 +194,7 @@ describe("GET /api/custom-providers (shared providers)", () => {
         headers: { "x-api-key": "super-secret" },
         models: [],
         excludedModels: [],
-        apiKeyEncrypted: "enc",
+        keys: [],
         isShared: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -243,6 +243,7 @@ describe("POST /api/custom-providers (isShared admin gate)", () => {
       headers: {},
       models: [],
       excludedModels: [],
+      keys: [],
     });
     const { POST } = await import("./route");
     const res = await POST(buildRequest({ ...validBody, isShared: true }));
@@ -261,6 +262,7 @@ describe("POST /api/custom-providers (isShared admin gate)", () => {
       headers: {},
       models: [],
       excludedModels: [],
+      keys: [],
     });
     const { POST } = await import("./route");
     const res = await POST(buildRequest(validBody));

@@ -92,11 +92,10 @@ const baseProvider = {
   proxyUrl: null,
   groupId: null,
   headers: {},
-  apiKeyHash: "hash",
-  apiKeyEncrypted: "enc",
   isShared: true,
   models: [],
   excludedModels: [],
+  keys: [],
 };
 
 describe("PATCH /api/custom-providers/[id] (shared admin gate)", () => {
