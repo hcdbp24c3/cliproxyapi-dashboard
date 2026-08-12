@@ -23,6 +23,39 @@ export const CONTAINER_CONFIG: Record<string, ContainerPermissions> = {
 
 export const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 
+/**
+ * Resolve a container name (as reported by `docker ps`) to its known config.
+ *
+ * Plain Docker Compose deployments use the exact container name from the
+ * compose file (e.g. `cliproxyapi-dashboard`). Managed platforms such as
+ * Coolify append an instance id to the service name (e.g.
+ * `cliproxyapi-dashboard-a1b2c3d4`), so we fall back to the longest known
+ * prefix. Longest-prefix wins, so `cliproxyapi-postgres-<uuid>` maps to the
+ * PostgreSQL config instead of the shorter `cliproxyapi` (CLIProxyAPI API) key.
+ */
+export function resolveContainerConfig(name: string): { key: string; config: ContainerPermissions } | null {
+  const n = name.replace(/^\//, "");
+
+  const exact = CONTAINER_CONFIG[n];
+  if (exact) {
+    return { key: n, config: exact };
+  }
+
+  const matches = Object.keys(CONTAINER_CONFIG)
+    .filter((k) => n.startsWith(`${k}-`))
+    .sort((a, b) => b.length - a.length);
+
+  const key = matches[0];
+  if (key) {
+    const config = CONTAINER_CONFIG[key];
+    if (config) {
+      return { key, config };
+    }
+  }
+
+  return null;
+}
+
 const ACTION = {
   START: "start",
   STOP: "stop",
@@ -31,12 +64,12 @@ const ACTION = {
 
 export type ContainerAction = (typeof ACTION)[keyof typeof ACTION];
 
-export function isValidContainerName(name: string): name is keyof typeof CONTAINER_CONFIG {
-  return CONTAINER_NAME_PATTERN.test(name) && name in CONTAINER_CONFIG;
+export function isValidContainerName(name: string): boolean {
+  return CONTAINER_NAME_PATTERN.test(name) && resolveContainerConfig(name) !== null;
 }
 
 export function getAllowedActions(containerName: string, state: string): ContainerAction[] {
-  const config = CONTAINER_CONFIG[containerName];
+  const config = resolveContainerConfig(containerName)?.config;
   if (!config) return [];
 
   const actions: ContainerAction[] = [];

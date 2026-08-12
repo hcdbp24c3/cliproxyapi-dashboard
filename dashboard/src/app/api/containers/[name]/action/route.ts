@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { verifySession } from "@/lib/auth/session";
 import { validateOrigin } from "@/lib/auth/origin";
 import { prisma } from "@/lib/db";
-import { CONTAINER_CONFIG, isValidContainerName } from "@/lib/containers";
+import { isValidContainerName, resolveContainerConfig } from "@/lib/containers";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { z } from "zod";
@@ -48,7 +48,7 @@ export async function POST(
     const validated = ContainerActionSchema.parse(body);
 
     const typedAction: ActionValue = validated.action;
-    const config = CONTAINER_CONFIG[name];
+    const config = resolveContainerConfig(name)?.config;
     if (!config) {
       return Errors.notFound("Container");
     }

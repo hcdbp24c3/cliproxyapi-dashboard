@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { CONTAINER_CONFIG, getAllowedActions, type ContainerAction } from "@/lib/containers";
+import { CONTAINER_CONFIG, getAllowedActions, resolveContainerConfig, type ContainerAction } from "@/lib/containers";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { logger } from "@/lib/logger";
@@ -54,7 +54,7 @@ export async function GET() {
 
   try {
     const filterArgs = Object.keys(CONTAINER_CONFIG).flatMap(
-      (name) => ["--filter", `name=^/${name}$`]
+      (name) => ["--filter", `name=^/${name}`]
     );
 
     const { stdout } = await runDockerCommand([
@@ -79,13 +79,13 @@ export async function GET() {
         continue;
       }
 
-      const config = CONTAINER_CONFIG[name];
-      if (!config) {
+      const resolved = resolveContainerConfig(name);
+      if (!resolved) {
         logger.warn({ containerName: name }, "Skipping container without configuration");
         continue;
       }
 
-      parsedContainers.push({ name, status, state, config });
+      parsedContainers.push({ name, status, state, config: resolved.config });
     }
 
     const containers = await Promise.all(
