@@ -627,6 +627,7 @@
     "fieldProviderIdHintNew": "Auto-generated from name.",
     "fieldApiKeyEditHint": "Leave empty to keep existing API key",
     "fieldApiKeyOptionalHint": "Optional. Leave empty for providers that don't require authentication (e.g. local Ollama).",
+    "fieldApiKeyLinesHint": "Add multiple keys, one per line.",
     "fieldPrefixHint": "Model name prefix for routing",
     "modelMappingsLabel": "Model Mappings",
     "addModelButton": "+ Add Model",

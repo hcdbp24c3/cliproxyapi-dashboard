@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface BasicFieldsProps {
   name: string;
@@ -100,15 +101,18 @@ export function BasicFields({
         <label htmlFor="apiKey" className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">
           {t("fieldApiKeyLabel")}
         </label>
-        <Input
-          type="password"
+        <Textarea
           name="apiKey"
           value={apiKey}
           onChange={onApiKeyChange}
           placeholder={isEdit ? t("fieldApiKeyEditPlaceholder") : t("fieldApiKeyPlaceholder")}
+          rows={2}
+          autoComplete="off"
+          spellCheck={false}
           disabled={saving}
         />
         <p className="mt-1.5 text-xs text-[var(--text-muted)]">{isEdit ? t("fieldApiKeyEditHint") : t("fieldApiKeyOptionalHint")}</p>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">{t("fieldApiKeyLinesHint")}</p>
       </div>
 
       <div>

@@ -193,11 +193,16 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       return acc;
     }, {} as Record<string, string>);
 
+    const apiKeys = apiKey
+      .split("\n")
+      .map((k) => k.trim())
+      .filter(Boolean);
+
     const payload = {
       name,
       providerId,
       baseUrl,
-      ...(apiKey ? { apiKey } : {}),
+      ...(apiKeys.length > 0 ? { keys: apiKeys.map((k) => ({ apiKey: k })) } : {}),
       prefix: prefix || undefined,
       proxyUrl: proxyUrl || undefined,
       headers: Object.keys(headersObj).length > 0 ? headersObj : undefined,
@@ -303,10 +308,11 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     setShowFetchedModels(false);
 
     try {
+      const firstApiKey = apiKey.split("\n").map((k) => k.trim()).find(Boolean) ?? "";
       const response = await fetch(API_ENDPOINTS.CUSTOM_PROVIDERS.FETCH_MODELS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiKey ? { baseUrl, apiKey } : { baseUrl })
+        body: JSON.stringify(firstApiKey ? { baseUrl, apiKey: firstApiKey } : { baseUrl })
       });
 
       if (response.ok) {
