@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.84](https://github.com/hcdbp24c3/cliproxyapi-dashboard/compare/dashboard-v0.1.83...dashboard-v0.1.84) (2026-08-13)
+
+
+### Features
+
+* **containers:** resolve config for Coolify-style suffixed container names ([bfd750a](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/bfd750aace877ba4ca3b406016f4d533b1799d27))
+* **custom-providers:** add duplicate API key removal ([0148517](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/014851765c9d3df336a4b39192c13cb2925da346))
+* **custom-providers:** support multiple API keys via multi-line textarea ([aad309b](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/aad309b671bd26f2fa21660011a18e73a4ca1023))
+
+
+### Bug Fixes
+
+* **containers:** scope container list by compose project labels ([19a404e](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/19a404e1bde768d3878f824a497d817b6d5bcfbb))
+* **entrypoint:** create custom_provider_keys table for pool keys ([5cc2698](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/5cc2698e41841c5bfe9d71e929184b43682d8592))
+
 ## [0.1.83](https://github.com/hcdbp24c3/cliproxyapi-dashboard/compare/dashboard-v0.1.82...dashboard-v0.1.83) (2026-08-13)
 
 
