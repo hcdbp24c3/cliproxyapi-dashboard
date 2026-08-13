@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.83](https://github.com/hcdbp24c3/cliproxyapi-dashboard/compare/dashboard-v0.1.82...dashboard-v0.1.83) (2026-08-13)
+
+
+### Features
+
+* **containers:** resolve config for Coolify-style suffixed container names ([bfd750a](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/bfd750aace877ba4ca3b406016f4d533b1799d27))
+* **custom-providers:** add CustomProviderKey model and migration ([704438c](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/704438c198c9a23e558293455ecb8de7cd05a76f))
+* **custom-providers:** add delete-all and collapsible model mappings section ([cc5833e](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/cc5833e125d7ba59206e5df8775c83efb65fbaa7))
+* **custom-providers:** add duplicate API key removal ([0148517](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/014851765c9d3df336a4b39192c13cb2925da346))
+* **custom-providers:** route model pool keys through validation, sync, and API ([7100305](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/7100305a1889857d6dd924d5f40cafb8ef63f964))
+* **custom-providers:** support multiple API keys via multi-line textarea ([aad309b](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/aad309b671bd26f2fa21660011a18e73a4ca1023))
+* **custom-providers:** surface model pool keys in provider UI ([b97b67d](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/b97b67d33d444f46d49b49bfb30e0ad1560e5242))
+* **install:** add dashboard-only deployment mode ([dd7f369](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/dd7f36960a4aa8760e179f7a4ca5c748f62e5ffa))
+
+
+### Bug Fixes
+
+* **backup:** export and import custom provider pool keys ([5dd264e](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/5dd264e194ffb69f84da86ba5596e9c6866cc130))
+* **containers:** scope container list by compose project labels ([19a404e](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/19a404e1bde768d3878f824a497d817b6d5bcfbb))
+* **entrypoint:** create custom_provider_keys table for pool keys ([5cc2698](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/5cc2698e41841c5bfe9d71e929184b43682d8592))
+* **install:** make UFW setup opt-in ([b9cc297](https://github.com/hcdbp24c3/cliproxyapi-dashboard/commit/b9cc297fb3e3dd1334bfecaedb0cf7c83738c328))
+
 ## [0.1.82](https://github.com/itsmylife44/cliproxyapi-dashboard/compare/dashboard-v0.1.81...dashboard-v0.1.82) (2026-06-21)
 
 
