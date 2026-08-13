@@ -45,7 +45,7 @@ export function Textarea({
         "focus:outline-none",
         "disabled:opacity-50 disabled:cursor-not-allowed",
         "placeholder:text-[var(--text-muted)] transition-colors duration-200",
-        "resize-y",
+        "resize-none",
         className
       )}
     />

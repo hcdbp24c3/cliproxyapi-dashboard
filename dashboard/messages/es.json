@@ -628,6 +628,7 @@
     "fieldApiKeyEditHint": "Dejar vacío para mantener la clave API actual",
     "fieldApiKeyOptionalHint": "Opcional. Dejar vacío para proveedores que no requieren autenticación (ej. Ollama local).",
     "fieldApiKeyLinesHint": "Añade varias claves, una por línea.",
+    "fieldApiKeyDedupeButton": "Eliminar claves duplicadas",
     "fieldPrefixHint": "Prefijo del nombre del modelo para el enrutamiento",
     "modelMappingsLabel": "Mapeos de Modelos",
     "addModelButton": "+ Añadir Modelo",

@@ -45,6 +45,22 @@ export function BasicFields({
 }: BasicFieldsProps) {
   const t = useTranslations("providers");
 
+  const apiKeyLines = apiKey
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hasDuplicateKeys = new Set(apiKeyLines).size !== apiKeyLines.length;
+
+  const handleDedupeKeys = () => {
+    const seen = new Set<string>();
+    const deduped = apiKeyLines.filter((line) => {
+      if (seen.has(line)) return false;
+      seen.add(line);
+      return true;
+    });
+    onApiKeyChange(deduped.join("\n"));
+  };
+
   return (
     <>
       <div>
@@ -98,18 +114,31 @@ export function BasicFields({
       </div>
 
       <div>
-        <label htmlFor="apiKey" className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">
-          {t("fieldApiKeyLabel")}
-        </label>
+        <div className="mb-2 flex items-center justify-between">
+          <label htmlFor="apiKey" className="block text-sm font-semibold text-[var(--text-primary)]">
+            {t("fieldApiKeyLabel")}
+          </label>
+          {hasDuplicateKeys && (
+            <button
+              type="button"
+              onClick={handleDedupeKeys}
+              disabled={saving}
+              className="text-xs font-medium text-[var(--accent)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t("fieldApiKeyDedupeButton")}
+            </button>
+          )}
+        </div>
         <Textarea
           name="apiKey"
           value={apiKey}
           onChange={onApiKeyChange}
           placeholder={isEdit ? t("fieldApiKeyEditPlaceholder") : t("fieldApiKeyPlaceholder")}
-          rows={2}
+          rows={1}
           autoComplete="off"
           spellCheck={false}
           disabled={saving}
+          className="[field-sizing:content] min-h-[38px]"
         />
         <p className="mt-1.5 text-xs text-[var(--text-muted)]">{isEdit ? t("fieldApiKeyEditHint") : t("fieldApiKeyOptionalHint")}</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">{t("fieldApiKeyLinesHint")}</p>

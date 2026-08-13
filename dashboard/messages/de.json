@@ -628,6 +628,7 @@
     "fieldApiKeyEditHint": "Leer lassen, um vorhandenen API-Schlüssel zu behalten",
     "fieldApiKeyOptionalHint": "Optional. Leer lassen bei Providern ohne Authentifizierung (z. B. lokales Ollama).",
     "fieldApiKeyLinesHint": "Mehrere Keys hinzufügen, einen pro Zeile.",
+    "fieldApiKeyDedupeButton": "Doppelte Keys entfernen",
     "fieldPrefixHint": "Modellnamenpräfix für das Routing",
     "modelMappingsLabel": "Modellzuordnungen",
     "addModelButton": "+ Modell hinzufügen",
