@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { CONTAINER_CONFIG, getAllowedActions, resolveContainerConfig, type ContainerAction } from "@/lib/containers";
+import { API_SERVICE_KEY, findDeploymentProject, getAllowedActions, resolveContainerConfig, type ContainerAction, type ContainerListLine, type ContainerPermissions } from "@/lib/containers";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { logger } from "@/lib/logger";
@@ -53,39 +53,55 @@ export async function GET() {
   }
 
   try {
-    const filterArgs = Object.keys(CONTAINER_CONFIG).flatMap(
-      (name) => ["--filter", `name=^/${name}`]
-    );
-
     const { stdout } = await runDockerCommand([
       "ps", "-a",
-      ...filterArgs,
-      "--format", "{{.Names}}\t{{.Status}}\t{{.State}}",
+      "--format", "{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Label \"com.docker.compose.project\"}}",
     ]);
 
-    const lines = stdout.trim().split("\n").filter(Boolean);
+    const lines: ContainerListLine[] = [];
+    for (const raw of stdout.trim().split("\n")) {
+      if (!raw) continue;
+      const [name, status, state, composeService, composeProject] = raw.split("\t");
+      if (!name || !status || !state) {
+        logger.warn({ line: raw }, "Skipping malformed docker ps line");
+        continue;
+      }
+      lines.push({
+        name,
+        status,
+        state,
+        composeService: composeService || undefined,
+        composeProject: composeProject || undefined,
+      });
+    }
+
+    // Anchor on the CLIProxyAPI container to find this deployment's compose
+    // project. Containers of the same compose/Coolify deployment share
+    // `com.docker.compose.project`; scoping by it excludes containers of other
+    // apps on the same daemon that happen to share service names (e.g. another
+    // app's `postgres-<uuid>`).
+    const deploymentProject = findDeploymentProject(lines, API_SERVICE_KEY);
+
+    // Fallback for deployments without compose labels (e.g. raw `docker run`):
+    // keep containers that resolve by container_name alone.
+    const relevant = deploymentProject
+      ? lines.filter((c) => c.composeProject === deploymentProject)
+      : lines.filter((c) => resolveContainerConfig(c.name) !== null);
 
     const parsedContainers: Array<{
       name: string;
       status: string;
       state: string;
-      config: (typeof CONTAINER_CONFIG)[string];
+      config: ContainerPermissions;
     }> = [];
 
-    for (const line of lines) {
-      const [name, status, state] = line.split("\t");
-      if (!name || !status || !state) {
-        logger.warn({ line }, "Skipping malformed docker ps line");
-        continue;
-      }
-
-      const resolved = resolveContainerConfig(name);
+    for (const line of relevant) {
+      const resolved = resolveContainerConfig(line.name, line.composeService);
       if (!resolved) {
-        logger.warn({ containerName: name }, "Skipping container without configuration");
+        logger.warn({ containerName: line.name }, "Skipping container without configuration");
         continue;
       }
-
-      parsedContainers.push({ name, status, state, config: resolved.config });
+      parsedContainers.push({ name: line.name, status: line.status, state: line.state, config: resolved.config });
     }
 
     const containers = await Promise.all(
