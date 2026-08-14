@@ -102,6 +102,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
   const [groupId, setGroupId] = useState<string | null>(null);
   const [groups, setGroups] = useState<{id: string; name: string; color: string | null}[]>([]);
   const [isShared, setIsShared] = useState(false);
+  const [keysMode, setKeysMode] = useState<"replace" | "append">("replace");
 
   const [errors, setErrors] = useState({
     name: "",
@@ -157,6 +158,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       setGroupId(provider.groupId);
       setIsShared(provider.isShared === true);
       setApiKey("");
+      setKeysMode("replace");
       return;
     }
 
@@ -203,6 +205,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       providerId,
       baseUrl,
       ...(apiKeys.length > 0 ? { keys: apiKeys.map((k) => ({ apiKey: k })) } : {}),
+      ...(isEdit && apiKeys.length > 0 ? { keysMode } : {}),
       prefix: prefix || undefined,
       proxyUrl: proxyUrl || undefined,
       headers: Object.keys(headersObj).length > 0 ? headersObj : undefined,
@@ -404,6 +407,8 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
             onApiKeyChange={setApiKey}
             onPrefixChange={setPrefix}
             onProxyUrlChange={setProxyUrl}
+            keysMode={keysMode}
+            onKeysModeChange={setKeysMode}
           />
 
           <HeadersSection

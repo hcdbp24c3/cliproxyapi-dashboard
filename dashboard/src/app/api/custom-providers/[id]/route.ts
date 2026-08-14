@@ -9,7 +9,7 @@ import { invalidateProxyModelsCache } from "@/lib/cache";
 import { AUDIT_ACTION, extractIpAddress, logAuditAsync } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { syncCustomProviderToProxy, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
+import { syncCustomProviderToProxy, mergeProviderKeyEntries, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
 import { CustomProviderKeySchema } from "@/lib/validation/schemas";
 import { Errors, apiSuccess } from "@/lib/errors";
 import { isUserAdmin } from "@/lib/auth/admin";
@@ -31,6 +31,7 @@ const UpdateCustomProviderSchema = z.object({
   baseUrl: z.string().url("Base URL must be a valid URL (http:// or https://)").optional(),
   apiKey: z.string().min(1).optional(),
   keys: z.array(CustomProviderKeySchema).optional(),
+  keysMode: z.enum(["replace", "append"]).optional(),
   prefix: z.string().optional(),
   proxyUrl: z.string().optional(),
   groupId: z.string().nullable().optional(),
@@ -76,7 +77,7 @@ export async function PATCH(
 
     const existingProvider = await prisma.customProvider.findUnique({
       where: { id },
-      include: { models: true, excludedModels: true }
+      include: { models: true, excludedModels: true, keys: true }
     });
 
     if (!existingProvider) {
@@ -124,9 +125,39 @@ export async function PATCH(
       }
     }
 
-    const keyInputs = validated.keys && validated.keys.length > 0
+    let keyInputs = validated.keys && validated.keys.length > 0
       ? validated.keys
       : (validated.apiKey ? [{ apiKey: validated.apiKey }] : null);
+
+    // Append mode: keep existing encrypted keys (decrypted in-memory) and merge with new ones
+    if (keyInputs && validated.keysMode === "append") {
+      const existingPlainKeys: SyncProviderKeyEntry[] = [];
+      let appendBlockedReason: string | null = null;
+
+      for (const key of existingProvider.keys) {
+        if (!key.enabled) continue;
+
+        if (!key.apiKeyEncrypted) {
+          appendBlockedReason = "Provider has a legacy key without an encrypted copy - use overwrite mode instead";
+          break;
+        }
+
+        const decrypted = decryptProviderKey(key.apiKeyEncrypted);
+        if (!decrypted) {
+          appendBlockedReason = "Failed to decrypt stored API key - use overwrite mode instead";
+          logger.error({ providerId: existingProvider.providerId, keyId: key.id }, "Failed to decrypt stored API key during append");
+          break;
+        }
+
+        existingPlainKeys.push({ apiKey: decrypted, weight: key.weight, proxyUrl: key.proxyUrl });
+      }
+
+      if (appendBlockedReason) {
+        return Errors.validation(appendBlockedReason);
+      }
+
+      keyInputs = mergeProviderKeyEntries(existingPlainKeys, keyInputs);
+    }
 
     const provider = await prisma.$transaction(async (tx) => {
       if (validated.models) {

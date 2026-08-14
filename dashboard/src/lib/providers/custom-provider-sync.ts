@@ -37,6 +37,19 @@ export interface SyncResult {
   syncMessage?: string;
 }
 
+export function mergeProviderKeyEntries(
+  existing: SyncProviderKeyEntry[],
+  incoming: SyncProviderKeyEntry[]
+): SyncProviderKeyEntry[] {
+  const seen = new Set<string>();
+  return [...existing, ...incoming].filter((entry) => {
+    const normalized = entry.apiKey.trim();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
 interface ManagementProviderEntry {
   name?: string;
   [key: string]: unknown;
