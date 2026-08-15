@@ -53,22 +53,15 @@ N6. `providerMutex`/`AsyncMutex` (management-api.ts) reused for Management API c
 
 File: `dashboard/prisma/schema.prisma`
 
-```prisma
-enum CustomProviderApiType {
-  openai_compatible
-  claude
-  gemini
-  codex
-  vertex
-  xai
-  interactions
-}
+**`apiType` is stored as a plain `String` column, NOT a Prisma enum.** Rationale: Prisma enum values cannot contain hyphens (`openai-compatible` is invalid), which would force a second snake_case representation (`openai_compatible`) and a kebab↔snake mapping layer. The TS constant in §4.2 is the single source of truth; the database stores the canonical kebab-case string verbatim.
 
+```prisma
 model CustomProvider {
   // ...existing fields...
-  apiType          CustomProviderApiType @default(openai_compatible)
-  autoUpdateModels Boolean              @default(false)
+  apiType          String   @default("openai-compatible")
+  autoUpdateModels Boolean  @default(false)
   lastModelsSyncAt DateTime?
+  cloak            Boolean  @default(false)  // claude-only; ignored for other apiTypes (see §4.7.1)
 }
 ```
 
@@ -130,7 +123,7 @@ Update `src/lib/providers/resync.ts` to pass `apiType` through.
 
 File: `src/lib/providers/upstream-check.ts`
 
-Signature: `fetchUpstreamModels(baseUrl, apiKey, options?: { apiType?: CustomProviderApiType })` — default `openai-compatible`.
+Signature: `fetchUpstreamModels(baseUrl, apiKey, options?: { apiType?: CustomProviderApiType })` — default `openai-compatible`. `apiKey` may be empty for local providers (e.g. Ollama), same as today.
 
 | apiType | Request | Response parse |
 |---------|---------|----------------|
@@ -140,7 +133,7 @@ Signature: `fetchUpstreamModels(baseUrl, apiKey, options?: { apiType?: CustomPro
 
 All return the existing `{ models: [{ id }] }` shape so callers are unchanged.
 
-Update `src/app/api/custom-providers/fetch-models/route.ts`: accept `apiType` in the POST body (`{ baseUrl, apiKey, apiType }`), validate via Zod, pass through.
+Update `src/app/api/custom-providers/fetch-models/route.ts`: accept `apiType` in the POST body (`{ baseUrl, apiKey, apiType }`), validate via Zod (extend `FetchModelsSchema` in `src/lib/validation/schemas.ts` with `apiType`), pass through.
 
 ### 4.5 Scheduler (`src/lib/model-sync/` new module)
 
@@ -181,7 +174,7 @@ Algorithm:
 1. Read settings; if `!enabled`, return `{ checked: false, skippedReason: "disabled" }`.
 2. Load providers with `autoUpdateModels: true` (include `models`, `keys`).
 3. For each provider (sequential; Management API calls serialized by existing mutex):
-   a. Fetch upstream models via `fetchUpstreamModels(baseUrl, decryptedPrimaryKey, { apiType })`. If fetch fails → record failure, continue.
+   a. Fetch upstream models via `fetchUpstreamModels(baseUrl, firstDecryptableKey, { apiType })` where `firstDecryptableKey` = first enabled `CustomProviderKey` that decrypts successfully (fall back to empty string so local providers still work). If no decryptable key AND provider is remote → record failure, continue.
    b. Compute existing `upstreamName` set. Insert rows for upstream ids not present, `alias = upstreamName` (no smart aliasing; user can edit alias later).
    c. If any rows inserted → `syncCustomProviderToProxy(..., "update")` to push new models; update `lastModelsSyncAt`.
 4. Return summary.
@@ -199,11 +192,11 @@ Algorithm:
 
 **Per-provider manual trigger:**
 
-- `src/app/api/custom-providers/[id]/sync-models/route.ts` — POST, ownership check (owner or admin, same as `[id]/route.ts` PATCH), runs the same insert+resync for that single provider (extracted helper from `run.ts`, e.g. `syncProviderModels(providerId)`), returns `{ addedModels, lastModelsSyncAt }`.
+- `src/app/api/custom-providers/[id]/sync-models/route.ts` — POST, ownership check (owner or admin, same as `[id]/route.ts` PATCH), rate limit via `checkRateLimitWithPreset(request, "custom-providers-sync-models", "CUSTOM_PROVIDERS")` (mirrors `fetch-models`), runs the same insert+resync for that single provider (extracted helper from `run.ts`, e.g. `syncProviderModels(providerId)`), returns `{ addedModels, lastModelsSyncAt }`.
 
 ### 4.6 Provider CRUD routes + validation
 
-- `src/lib/validation/schemas.ts`: add to `CustomProviderSchema`:
+- `src/lib/validation/schemas.ts`: add to `CreateCustomProviderSchema` (schemas.ts:298):
   - `apiType: z.enum([...CUSTOM_PROVIDER_API_TYPES]).optional()` (create only)
   - `autoUpdateModels: z.boolean().optional()`
 - `src/app/api/custom-providers/route.ts` (POST): accept `apiType` (required for new providers? — default `openai-compatible` when omitted), `autoUpdateModels`; persist.
