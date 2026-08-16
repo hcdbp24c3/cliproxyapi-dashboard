@@ -15,6 +15,8 @@ export const API_ENDPOINTS = {
     SETTINGS: "/api/admin/settings",
     LOGS: "/api/admin/logs",
     TELEGRAM: "/api/admin/telegram",
+    KEY_HEALTH: "/api/admin/key-health",
+    KEY_HEALTH_RUN: "/api/admin/key-health/run",
     REVOKE_SESSIONS: "/api/admin/revoke-sessions",
     BACKUP: "/api/admin/backup",
     BACKUP_SCHEDULE: "/api/admin/backup/schedule",
@@ -52,6 +54,9 @@ export const API_ENDPOINTS = {
     FETCH_MODELS: "/api/custom-providers/fetch-models",
     REORDER: "/api/custom-providers/reorder",
     RESYNC: "/api/custom-providers/resync",
+    CHECK_KEY: "/api/custom-providers/check-key",
+    KEYS: (id: string) => `/api/custom-providers/${id}/keys`,
+    KEY: (id: string, keyId: string) => `/api/custom-providers/${id}/keys/${keyId}`,
   },
   PROVIDER_GROUPS: {
     BASE: "/api/provider-groups",

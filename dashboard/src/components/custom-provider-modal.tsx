@@ -12,6 +12,7 @@ import { ModelDiscovery } from "@/components/custom-providers/model-discovery";
 import { ModelMappings } from "@/components/custom-providers/model-mappings";
 import { ExcludedModels } from "@/components/custom-providers/excluded-models";
 import { GroupSelect } from "@/components/custom-providers/group-select";
+import { KeysManagerModal } from "@/components/custom-providers/keys-manager";
 import { useAuth } from "@/hooks/use-auth";
 
 import { useTranslations } from "next-intl";
@@ -103,6 +104,8 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
   const [groups, setGroups] = useState<{id: string; name: string; color: string | null}[]>([]);
   const [isShared, setIsShared] = useState(false);
   const [keysMode, setKeysMode] = useState<"replace" | "append">("replace");
+  const [checkingKey, setCheckingKey] = useState(false);
+  const [keysManagerOpen, setKeysManagerOpen] = useState(false);
 
   const [errors, setErrors] = useState({
     name: "",
@@ -346,6 +349,50 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     }
   };
 
+  const checkKeyHandler = async () => {
+    if (!isValidBaseUrl(baseUrl)) {
+      showToast(t("toastFetchModelsInvalid"), "error");
+      return;
+    }
+
+    const firstApiKey = apiKey.split("\n").map((k) => k.trim()).find(Boolean) ?? "";
+    if (!firstApiKey) {
+      showToast(t("toastCheckKeyRequired"), "error");
+      return;
+    }
+
+    setCheckingKey(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.CUSTOM_PROVIDERS.CHECK_KEY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl, apiKey: firstApiKey })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.valid) {
+          showToast(t("toastCheckKeyValid"), "success");
+        } else {
+          const message = data.message ?? t("toastCheckKeyInvalid");
+          showToast(message, "error");
+        }
+      } else {
+        let data: unknown = null;
+        try {
+          data = await response.json();
+        } catch {
+          data = null;
+        }
+        showToast(extractApiError(data, t("toastCheckKeyFailed")), "error");
+      }
+    } catch {
+      showToast(t("toastNetworkError"), "error");
+    } finally {
+      setCheckingKey(false);
+    }
+  };
+
   const toggleFetchedModel = (id: string) => {
     setFetchedModels(prev =>
       prev.map(model =>
@@ -383,7 +430,8 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     setFetchedModels([]);
   };
 
-  return (
+return (
+  <>
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl">
       <ModalHeader>
         <ModalTitle>{isEdit ? t("customProviderEditTitle") : t("customProviderAddTitle")}</ModalTitle>
@@ -400,6 +448,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
             proxyUrl={proxyUrl}
             isEdit={isEdit}
             saving={saving}
+            checkingKey={checkingKey}
             errors={errors}
             onNameChange={handleNameChange}
             onProviderIdChange={setProviderId}
@@ -409,6 +458,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
             onProxyUrlChange={setProxyUrl}
             keysMode={keysMode}
             onKeysModeChange={setKeysMode}
+            onCheckKey={checkKeyHandler}
           />
 
           <HeadersSection
@@ -476,14 +526,33 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
         </div>
       </ModalContent>
 
-      <ModalFooter>
-        <Button variant="ghost" onClick={onClose} disabled={saving}>
-          {t("customProviderCancelButton")}
-        </Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? (isEdit ? t("customProviderUpdatingButton") : t("customProviderCreatingButton")) : (isEdit ? t("customProviderUpdateButton") : t("customProviderCreateButton"))}
-        </Button>
+      <ModalFooter className="justify-between">
+        {isEdit && provider ? (
+          <Button variant="secondary" onClick={() => setKeysManagerOpen(true)} disabled={saving}>
+            {t("manageKeysButton")}
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-4">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            {t("customProviderCancelButton")}
+          </Button>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? (isEdit ? t("customProviderUpdatingButton") : t("customProviderCreatingButton")) : (isEdit ? t("customProviderUpdateButton") : t("customProviderCreateButton"))}
+          </Button>
+        </div>
       </ModalFooter>
     </Modal>
-  );
+
+    {isEdit && provider && (
+      <KeysManagerModal
+        isOpen={keysManagerOpen}
+        onClose={() => setKeysManagerOpen(false)}
+        providerId={provider.id}
+        providerName={provider.name}
+      />
+    )}
+  </>
+);
 }

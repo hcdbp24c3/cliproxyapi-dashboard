@@ -14,6 +14,7 @@ interface BasicFieldsProps {
   proxyUrl: string;
   isEdit: boolean;
   saving: boolean;
+  checkingKey: boolean;
   keysMode: "replace" | "append";
   errors: {
     name: string;
@@ -27,6 +28,7 @@ interface BasicFieldsProps {
   onPrefixChange: (value: string) => void;
   onProxyUrlChange: (value: string) => void;
   onKeysModeChange: (mode: "replace" | "append") => void;
+  onCheckKey: () => void;
 }
 
 export function BasicFields({
@@ -38,6 +40,7 @@ export function BasicFields({
   proxyUrl,
   isEdit,
   saving,
+  checkingKey,
   keysMode,
   errors,
   onNameChange,
@@ -47,6 +50,7 @@ export function BasicFields({
   onPrefixChange,
   onProxyUrlChange,
   onKeysModeChange,
+  onCheckKey,
 }: BasicFieldsProps) {
   const t = useTranslations("providers");
   const [showKeys, setShowKeys] = useState(false);
@@ -145,6 +149,14 @@ export function BasicFields({
               className="text-xs font-medium text-[var(--accent)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("fieldApiKeyDedupeButton")}
+            </button>
+            <button
+              type="button"
+              onClick={onCheckKey}
+              disabled={saving || checkingKey}
+              className="text-xs font-medium text-[var(--accent)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {checkingKey ? t("fieldApiKeyCheckingButton") : t("fieldApiKeyCheckButton")}
             </button>
           </div>
         </div>
