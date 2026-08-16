@@ -6,11 +6,13 @@
 
 import { runAlertCheck, getCheckIntervalMs } from "@/lib/quota-alerts";
 import { resyncCustomProviders } from "@/lib/providers/resync";
+import { runKeyHealthCheck, getKeyHealthIntervalMs } from "@/lib/key-health/check";
 import { logger } from "@/lib/logger";
 
 // Idempotency guard for HMR in dev — prevents duplicate intervals
 const globalForScheduler = globalThis as typeof globalThis & {
   __quotaSchedulerRegistered?: boolean;
+  __keyHealthSchedulerRegistered?: boolean;
 };
 
 function scheduleTimeout(callback: () => void | Promise<void>, delayMs: number) {
@@ -35,6 +37,10 @@ export function registerNodeInstrumentation() {
       logger.error({ err }, "Startup custom provider resync failed");
     });
   }, 15_000);
+
+  scheduleTimeout(() => {
+    startKeyHealthScheduler();
+  }, STARTUP_DELAY_MS);
 }
 
 function startQuotaAlertScheduler() {
@@ -92,6 +98,48 @@ function startQuotaAlertScheduler() {
     } catch {
       // Fallback to 5 minutes if DB read fails
       scheduleTimeout(scheduleNext, 5 * 60 * 1000);
+    }
+  };
+
+  scheduleNext();
+}
+
+function startKeyHealthScheduler() {
+  let isRunning = false;
+
+  const run = async () => {
+    if (isRunning) return;
+    isRunning = true;
+
+    try {
+      const summary = await runKeyHealthCheck();
+      if (summary.checked) {
+        logger.info(
+          {
+            probed: summary.probedCount,
+            disabled: summary.disabledKeys.length,
+            resync: summary.resyncStatus,
+          },
+          "Scheduled key health check completed"
+        );
+      }
+    } catch (error) {
+      // Log but never crash — scheduler errors must not take down the server
+      logger.error({ error }, "Key health scheduler error");
+    } finally {
+      isRunning = false;
+    }
+  };
+
+  // Use recursive setTimeout so interval can be re-read from DB each cycle
+  const scheduleNext = async () => {
+    await run();
+    try {
+      const intervalMs = await getKeyHealthIntervalMs();
+      scheduleTimeout(scheduleNext, intervalMs);
+    } catch {
+      // Fallback to 60 minutes if DB read fails
+      scheduleTimeout(scheduleNext, 60 * 60 * 1000);
     }
   };
 
