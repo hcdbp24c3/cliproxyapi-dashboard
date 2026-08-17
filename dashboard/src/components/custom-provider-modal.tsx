@@ -106,6 +106,11 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
   const [keysMode, setKeysMode] = useState<"replace" | "append">("replace");
   const [checkingKey, setCheckingKey] = useState(false);
   const [keysManagerOpen, setKeysManagerOpen] = useState(false);
+  const [apiType, setApiType] = useState("openai-compatible");
+  const [autoUpdateModels, setAutoUpdateModels] = useState(false);
+  const [cloak, setCloak] = useState(false);
+  const [syncingModels, setSyncingModels] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ models: string[]; syncedAt: string } | null>(null);
 
   const [errors, setErrors] = useState({
     name: "",
@@ -145,6 +150,10 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     setShowFetchedModels(false);
     setGroupId(null);
     setIsShared(false);
+    setApiType("openai-compatible");
+    setAutoUpdateModels(false);
+    setCloak(false);
+    setSyncResult(null);
   }, []);
 
   useEffect(() => {
@@ -160,6 +169,9 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       excludedModelIds.current = provider.excludedModels.map(() => nextId());
       setGroupId(provider.groupId);
       setIsShared(provider.isShared === true);
+      setApiType((provider as unknown as Record<string, unknown>).apiType as string || "openai-compatible");
+      setAutoUpdateModels((provider as unknown as Record<string, unknown>).autoUpdateModels as boolean || false);
+      setCloak((provider as unknown as Record<string, unknown>).cloak as boolean || false);
       setApiKey("");
       setKeysMode("replace");
       return;
@@ -217,7 +229,10 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       groupId: groupId || null,
       ...(isAdmin && (!isEdit || isShared !== (provider?.isShared === true))
         ? { isShared }
-        : {})
+        : {}),
+      apiType: isEdit ? undefined : apiType,
+      autoUpdateModels,
+      cloak,
     };
 
     try {
@@ -318,7 +333,7 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
       const response = await fetch(API_ENDPOINTS.CUSTOM_PROVIDERS.FETCH_MODELS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(firstApiKey ? { baseUrl, apiKey: firstApiKey } : { baseUrl })
+        body: JSON.stringify(firstApiKey ? { baseUrl, apiKey: firstApiKey, apiType } : { baseUrl, apiType })
       });
 
       if (response.ok) {
@@ -393,6 +408,28 @@ export function CustomProviderModal({ isOpen, onClose, provider, onSuccess }: Cu
     }
   };
 
+  const syncModelsHandler = async () => {
+    if (!provider?.id) return;
+    setSyncingModels(true);
+    setSyncResult(null);
+    try {
+      const url = API_ENDPOINTS.CUSTOM_PROVIDERS.SYNC_MODELS.replace("[id]", provider.id);
+      const response = await fetch(url, { method: "POST" });
+      if (response.ok) {
+        const data = await response.json();
+        setSyncResult(data);
+        showToast(t("syncModelsSuccess"), "success");
+      } else {
+        const data = await response.json().catch(() => null);
+        showToast(extractApiError(data, t("syncModelsError")), "error");
+      }
+    } catch {
+      showToast(t("toastNetworkError"), "error");
+    } finally {
+      setSyncingModels(false);
+    }
+  };
+
   const toggleFetchedModel = (id: string) => {
     setFetchedModels(prev =>
       prev.map(model =>
@@ -459,6 +496,12 @@ return (
             keysMode={keysMode}
             onKeysModeChange={setKeysMode}
             onCheckKey={checkKeyHandler}
+            apiType={apiType}
+            autoUpdateModels={autoUpdateModels}
+            cloak={cloak}
+            onApiTypeChange={setApiType}
+            onAutoUpdateModelsChange={setAutoUpdateModels}
+            onCloakChange={setCloak}
           />
 
           <HeadersSection
@@ -528,9 +571,23 @@ return (
 
       <ModalFooter className="justify-between">
         {isEdit && provider ? (
-          <Button variant="secondary" onClick={() => setKeysManagerOpen(true)} disabled={saving}>
-            {t("manageKeysButton")}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={() => setKeysManagerOpen(true)} disabled={saving}>
+              {t("manageKeysButton")}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={syncModelsHandler}
+              disabled={saving || syncingModels}
+            >
+              {syncingModels ? t("syncModelsRunning") : t("syncModels")}
+            </Button>
+            {syncResult && (
+              <span className="text-xs text-[var(--text-muted)]">
+                {t("lastSynced")}: {new Date(syncResult.syncedAt).toLocaleString()} ({syncResult.models.length} models)
+              </span>
+            )}
+          </div>
         ) : (
           <span />
         )}

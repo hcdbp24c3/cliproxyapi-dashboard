@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -29,6 +30,12 @@ interface BasicFieldsProps {
   onProxyUrlChange: (value: string) => void;
   onKeysModeChange: (mode: "replace" | "append") => void;
   onCheckKey: () => void;
+  apiType?: string;
+  autoUpdateModels?: boolean;
+  cloak?: boolean;
+  onApiTypeChange?: (value: string) => void;
+  onAutoUpdateModelsChange?: (value: boolean) => void;
+  onCloakChange?: (value: boolean) => void;
 }
 
 export function BasicFields({
@@ -51,6 +58,12 @@ export function BasicFields({
   onProxyUrlChange,
   onKeysModeChange,
   onCheckKey,
+  apiType = "openai-compatible",
+  autoUpdateModels = false,
+  cloak = false,
+  onApiTypeChange,
+  onAutoUpdateModelsChange,
+  onCloakChange,
 }: BasicFieldsProps) {
   const t = useTranslations("providers");
   const [showKeys, setShowKeys] = useState(false);
@@ -229,6 +242,83 @@ export function BasicFields({
           placeholder={t("fieldProxyUrlPlaceholder")}
           disabled={saving}
         />
+      </div>
+
+      {/* API Type + Options */}
+      <div className="space-y-3 rounded-md border border-[var(--surface-border)] bg-[var(--surface-muted)] p-3">
+        <div className="space-y-1">
+          <label htmlFor="apiType" className="text-xs font-medium text-[var(--text-muted)]">
+            {t("apiTypeLabel")}
+          </label>
+          <select
+            id="apiType"
+            value={apiType}
+            onChange={(e) => onApiTypeChange?.(e.target.value)}
+            disabled={saving || isEdit}
+            className={`w-full rounded-md border border-[var(--surface-border)] bg-[var(--surface-base)] px-3 py-1.5 text-sm text-[var(--text-primary)] ${isEdit ? "opacity-60 cursor-not-allowed" : ""}`}
+          >
+            <option value="openai-compatible">{t("apiTypes.openaiCompatible")}</option>
+            <option value="claude">{t("apiTypes.claude")}</option>
+            <option value="gemini">{t("apiTypes.gemini")}</option>
+            <option value="codex">{t("apiTypes.codex")}</option>
+            <option value="vertex">{t("apiTypes.vertex")}</option>
+            <option value="xai">{t("apiTypes.xai")}</option>
+            <option value="interactions">{t("apiTypes.interactions")}</option>
+          </select>
+          {isEdit && <p className="text-[10px] text-[var(--text-muted)]">{t("apiTypeEditHint")}</p>}
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoUpdateModels}
+            onClick={() => onAutoUpdateModelsChange?.(!autoUpdateModels)}
+            className={cn(
+              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
+              autoUpdateModels
+                ? "bg-blue-500/100 border-blue-500"
+                : "bg-[var(--surface-muted)] border-[var(--surface-border)]"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-3.5 w-3.5 rounded-full bg-[var(--surface-base)] transition-transform",
+                autoUpdateModels ? "translate-x-4" : "translate-x-0.5"
+              )}
+            />
+          </button>
+          <span className="text-xs text-[var(--text-secondary)]">{t("autoUpdateModelsLabel")}</span>
+        </label>
+        <p className="text-[10px] text-[var(--text-muted)]">{t("autoUpdateModelsHint")}</p>
+
+        {apiType !== "openai-compatible" && (
+          <label className="flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={cloak}
+              onClick={() => onCloakChange?.(!cloak)}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
+                cloak
+                  ? "bg-blue-500/100 border-blue-500"
+                  : "bg-[var(--surface-muted)] border-[var(--surface-border)]"
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-3.5 w-3.5 rounded-full bg-[var(--surface-base)] transition-transform",
+                  cloak ? "translate-x-4" : "translate-x-0.5"
+                )}
+              />
+            </button>
+            <span className="text-xs text-[var(--text-secondary)]">{t("cloakLabel")}</span>
+          </label>
+        )}
+        {apiType !== "openai-compatible" && (
+          <p className="text-[10px] text-[var(--text-muted)]">{t("cloakHint")}</p>
+        )}
       </div>
     </>
   );
