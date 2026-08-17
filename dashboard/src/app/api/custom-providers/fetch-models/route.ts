@@ -25,7 +25,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = FetchModelsSchema.parse(body);
 
-    const result = await fetchUpstreamModels(validated.baseUrl, validated.apiKey);
+    const result = await fetchUpstreamModels(validated.baseUrl, validated.apiKey, {
+      apiType: validated.apiType,
+    });
 
     switch (result.status) {
       case "success":

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { checkRateLimitWithPreset } from "@/lib/auth/rate-limit";
 import { AUDIT_ACTION, extractIpAddress, logAuditAsync } from "@/lib/audit";
 import { syncCustomProviderToProxy } from "@/lib/providers/custom-provider-sync";
+import { type CustomProviderApiType } from "@/lib/providers/api-types";
 import { CreateCustomProviderSchema } from "@/lib/validation/schemas";
 import { Errors } from "@/lib/errors";
 import { isUserAdmin } from "@/lib/auth/admin";
@@ -141,6 +142,9 @@ export async function POST(request: NextRequest) {
         proxyUrl: validated.proxyUrl,
         headers: validated.headers ? (validated.headers as Record<string, string>) : {},
         isShared: validated.isShared === true,
+        apiType: validated.apiType,
+        cloak: validated.cloak,
+        autoUpdateModels: validated.autoUpdateModels,
         keys: {
           create: keyInputs.map((k, index) => ({
             apiKeyHash: hashProviderKey(k.apiKey),
@@ -193,7 +197,9 @@ export async function POST(request: NextRequest) {
       proxyUrl: provider.proxyUrl,
       headers: provider.headers as Record<string, string> | null,
       models: provider.models,
-      excludedModels: provider.excludedModels
+      excludedModels: provider.excludedModels,
+      apiType: provider.apiType as CustomProviderApiType,
+      cloak: provider.cloak,
     }, "create");
 
     return NextResponse.json({

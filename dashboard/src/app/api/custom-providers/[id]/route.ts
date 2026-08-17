@@ -10,6 +10,7 @@ import { AUDIT_ACTION, extractIpAddress, logAuditAsync } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { syncCustomProviderToProxy, mergeProviderKeyEntries, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
+import { type CustomProviderApiType, API_TYPE_MANAGEMENT_PATH, isFlatListType } from "@/lib/providers/api-types";
 import { CustomProviderKeySchema } from "@/lib/validation/schemas";
 import { Errors, apiSuccess } from "@/lib/errors";
 import { isUserAdmin } from "@/lib/auth/admin";
@@ -74,6 +75,10 @@ export async function PATCH(
   try {
     const body = await request.json();
     const validated = UpdateCustomProviderSchema.parse(body);
+
+    if ("apiType" in body) {
+      return Errors.validation("Cannot change API type after creation");
+    }
 
     const existingProvider = await prisma.customProvider.findUnique({
       where: { id },
@@ -248,7 +253,9 @@ export async function PATCH(
         proxyUrl: provider.proxyUrl,
         headers: provider.headers as Record<string, string> | null,
         models: provider.models,
-        excludedModels: provider.excludedModels
+        excludedModels: provider.excludedModels,
+        apiType: provider.apiType as CustomProviderApiType,
+        cloak: provider.cloak,
       }, "update");
 
       syncStatus = syncResult.syncStatus;
@@ -340,20 +347,33 @@ export async function DELETE(
 
     if (secretKey) {
       try {
-        const getRes = await fetchWithTimeout(`${managementUrl}/openai-compatibility`, {
+        const providerApiType = existingProvider.apiType as CustomProviderApiType;
+        const managementPath = API_TYPE_MANAGEMENT_PATH[providerApiType];
+        const listKey = managementPath.replace(/^\//, "");
+
+        const getRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
           headers: { "Authorization": `Bearer ${secretKey}` }
         });
         
         if (getRes.ok) {
           const configData = (await getRes.json()) as Record<string, unknown>;
-          const openAiCompatibility = configData["openai-compatibility"];
-          const currentList: ManagementProviderEntry[] = Array.isArray(openAiCompatibility)
-            ? openAiCompatibility.filter(isManagementProviderEntry)
+          const rawList = configData[listKey];
+          const currentList: ManagementProviderEntry[] = Array.isArray(rawList)
+            ? rawList.filter(isManagementProviderEntry)
             : [];
 
-          const newList = currentList.filter((entry) => entry.name !== existingProvider.providerId);
+          let newList: unknown[];
+          if (isFlatListType(providerApiType)) {
+            const entryKey = existingProvider.prefix || existingProvider.providerId;
+            newList = currentList.filter((entry) => {
+              const entryName = typeof entry.name === "string" ? entry.name : undefined;
+              return entryName !== entryKey && entryName !== existingProvider.providerId;
+            });
+          } else {
+            newList = currentList.filter((entry) => entry.name !== existingProvider.providerId);
+          }
 
-          const putRes = await fetchWithTimeout(`${managementUrl}/openai-compatibility`, {
+          const putRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
             method: "PUT",
             headers: { 
               "Content-Type": "application/json",
