@@ -11,6 +11,7 @@ import { ProviderSettings } from "@/components/settings/provider-settings";
 import { PasswordSettings } from "@/components/settings/password-settings";
 import { BackupSettings } from "@/components/settings/backup-settings";
 import { KeyHealthSettings } from "@/components/settings/key-health-settings";
+import { ModelSyncSettings } from "@/components/settings/model-sync-settings";
 import { useTranslations } from 'next-intl';
 
 type SettingsTab = "general" | "backup";
@@ -434,6 +435,8 @@ export default function SettingsPage() {
       </section>
 
       <KeyHealthSettings />
+
+      <ModelSyncSettings />
 
       <ConfirmDialog
         isOpen={showConfirmProxyUpdate}
