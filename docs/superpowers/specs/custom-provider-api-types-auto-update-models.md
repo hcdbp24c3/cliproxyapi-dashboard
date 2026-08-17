@@ -1,6 +1,6 @@
 # Spec: Custom Provider API Types + Auto-Update Models
 
-**Status:** Draft (pending user review)
+**Status:** Approved
 **Date:** 2026-08-15
 **Author:** Sisyphus
 
