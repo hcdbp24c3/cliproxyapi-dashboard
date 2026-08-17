@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 import { lookup } from "dns/promises";
+import type { CustomProviderApiType } from "./api-types";
 
 export const UPSTREAM_FETCH_TIMEOUT_MS = 10_000;
 
@@ -335,19 +336,46 @@ export async function validateUpstreamUrl(
   return { ok: true, url: parsedUrl };
 }
 
+export interface FetchUpstreamModelsOptions {
+  /** Provider API type — determines auth headers and models endpoint path. Defaults to `"openai-compatible"`. */
+  apiType?: CustomProviderApiType;
+  /** Additional headers merged into the request (e.g. custom auth tokens). */
+  headers?: Record<string, string>;
+}
+
 /**
- * Fetch `/models` from an upstream provider with SSRF protection, DNS-rebinding
- * checks, and a 10-second timeout. Returns a discriminated result instead of
- * throwing so callers can map failures to their own error responses.
+ * Fetch the model list from an upstream provider with SSRF protection,
+ * DNS-rebinding checks, and a 10-second timeout.
+ *
+ * Dispatches per `apiType`:
+ * - **openai-compatible / codex / xai / interactions** — `GET /models` with `Authorization: Bearer` header.
+ * - **claude** — `GET /models` with `x-api-key` header + `anthropic-version: 1.0-2023-06-01`.
+ * - **gemini** — `GET /v1beta/models` with `x-goog-api-key` header. Strips leading `models/` from returned IDs.
+ * - **vertex** — Returns empty list immediately (Vertex AI is POST-only; no model list endpoint).
+ *
+ * Returns a discriminated result instead of throwing so callers can map
+ * failures to their own error responses.
  */
 export async function fetchUpstreamModels(
   baseUrl: string,
-  apiKey?: string
+  apiKey?: string,
+  options?: FetchUpstreamModelsOptions
 ): Promise<UpstreamFetchResult> {
+  const apiType = options?.apiType ?? "openai-compatible";
+
+  // Vertex AI has no model list endpoint (POST-only key management).
+  if (apiType === "vertex") {
+    return { status: "success", models: [] };
+  }
+
   const validated = await validateUpstreamUrl(baseUrl);
   if (!validated.ok) return validated.result;
 
-  const modelsEndpoint = validated.url.toString();
+  // Gemini uses /v1beta/models; all other types use the /models path from validation.
+  const modelsEndpoint =
+    apiType === "gemini"
+      ? new URL(`${validated.url.origin}/v1beta/models`).toString()
+      : validated.url.toString();
 
   // Create abort controller for timeout
   const controller = new AbortController();
@@ -357,8 +385,28 @@ export async function fetchUpstreamModels(
     const requestHeaders: Record<string, string> = {
       "Content-Type": "application/json"
     };
-    if (apiKey && apiKey.length > 0) {
-      requestHeaders["Authorization"] = `Bearer ${apiKey}`;
+
+    switch (apiType) {
+      case "claude":
+        if (apiKey && apiKey.length > 0) {
+          requestHeaders["x-api-key"] = apiKey;
+        }
+        requestHeaders["anthropic-version"] = "1.0-2023-06-01";
+        break;
+      case "gemini":
+        if (apiKey && apiKey.length > 0) {
+          requestHeaders["x-goog-api-key"] = apiKey;
+        }
+        break;
+      default:
+        if (apiKey && apiKey.length > 0) {
+          requestHeaders["Authorization"] = `Bearer ${apiKey}`;
+        }
+        break;
+    }
+
+    if (options?.headers) {
+      Object.assign(requestHeaders, options.headers);
     }
 
     const response = await fetch(modelsEndpoint, {
@@ -382,9 +430,27 @@ export async function fetchUpstreamModels(
       return { status: "http-error", httpStatus: response.status };
     }
 
-    const responseData: OpenAIModelsResponse = await response.json();
+    const responseData = await response.json();
 
-    const modelList = responseData.data || responseData.models || [];
+    // Gemini returns { models: [{ name: "models/<id>", displayName: "..." }] }
+    if (apiType === "gemini") {
+      const geminiModels = responseData?.models;
+      if (!Array.isArray(geminiModels)) {
+        logger.error({ responseData }, "Invalid Gemini models response format");
+        return { status: "invalid-format" };
+      }
+      if (geminiModels.length === 0) {
+        return { status: "empty" };
+      }
+      const models = geminiModels.map((m: { name?: string; displayName?: string }) => {
+        const rawName = m.name ?? "";
+        const id = rawName.startsWith("models/") ? rawName.slice("models/".length) : rawName;
+        return { id, name: m.displayName ?? id };
+      });
+      return { status: "success", models };
+    }
+
+    const modelList = (responseData as OpenAIModelsResponse).data || (responseData as OpenAIModelsResponse).models || [];
 
     if (!Array.isArray(modelList)) {
       logger.error({ responseData }, "Invalid models response format");

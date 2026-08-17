@@ -5,6 +5,20 @@ import {
 } from "@/lib/auth/validation";
 
 // ============================================================================
+// API TYPE
+// ============================================================================
+
+export const ApiTypeSchema = z.enum([
+  "openai-compatible",
+  "claude",
+  "gemini",
+  "codex",
+  "vertex",
+  "xai",
+  "interactions",
+]);
+
+// ============================================================================
 // MODEL PREFERENCES
 // ============================================================================
 
@@ -286,7 +300,8 @@ export const SlimAgentConfigSchema = z.object({
 
 export const FetchModelsSchema = z.object({
   baseUrl: z.string().url("Base URL must be a valid URL (http:// or https://)"),
-  apiKey: z.string().optional()
+  apiKey: z.string().optional(),
+  apiType: ApiTypeSchema.optional(),
 });
 
 export const CustomProviderKeySchema = z.object({
@@ -309,7 +324,30 @@ export const CreateCustomProviderSchema = z.object({
     alias: z.string().min(1)
   })).min(1, "At least one model mapping is required"),
   excludedModels: z.array(z.string()).optional(),
-  isShared: z.boolean().optional()
+  isShared: z.boolean().optional(),
+  apiType: ApiTypeSchema.optional().default("openai-compatible"),
+  cloak: z.boolean().optional().default(false),
+  autoUpdateModels: z.boolean().optional().default(false),
+});
+
+export const UpdateCustomProviderSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  baseUrl: z.string().url("Base URL must be a valid URL (http:// or https://)").optional(),
+  apiKey: z.string().min(1).optional(),
+  keys: z.array(CustomProviderKeySchema).optional(),
+  keysMode: z.enum(["replace", "append"]).optional(),
+  prefix: z.string().optional(),
+  proxyUrl: z.string().optional(),
+  groupId: z.string().nullable().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  models: z.array(z.object({
+    upstreamName: z.string().min(1),
+    alias: z.string().min(1)
+  })).min(1, "At least one model mapping is required").optional(),
+  excludedModels: z.array(z.string()).optional(),
+  isShared: z.boolean().optional(),
+  cloak: z.boolean().optional(),
+  autoUpdateModels: z.boolean().optional(),
 });
 
 // ============================================================================
