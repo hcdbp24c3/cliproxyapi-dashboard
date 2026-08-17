@@ -180,7 +180,11 @@ model CustomProvider {
   createdAt  DateTime @default(now())
   isShared   Boolean  @default(false) // Admin-shared providers are visible to all users
   updatedAt  DateTime @updatedAt
-  
+  apiType          String    @default("openai-compatible")
+  cloak            Boolean   @default(false)
+  autoUpdateModels Boolean   @default(false)
+  lastModelsSyncAt DateTime?
+
   user           User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
   group          ProviderGroup?                @relation(fields: [groupId], references: [id], onDelete: SetNull)
   models         CustomProviderModel[]
