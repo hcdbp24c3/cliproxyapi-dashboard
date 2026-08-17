@@ -2,6 +2,11 @@ import "server-only";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { invalidateProxyModelsCache } from "@/lib/cache";
+import {
+  type CustomProviderApiType,
+  API_TYPE_MANAGEMENT_PATH,
+  isFlatListType,
+} from "./api-types";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -30,6 +35,8 @@ export interface SyncProviderData {
   headers?: Record<string, string> | null;
   models: Array<{ upstreamName: string; alias: string }>;
   excludedModels: Array<{ pattern: string }>;
+  apiType?: CustomProviderApiType;
+  cloak?: boolean;
 }
 
 export interface SyncResult {
@@ -61,13 +68,7 @@ function isManagementProviderEntry(value: unknown): value is ManagementProviderE
 
 /**
  * Syncs a custom provider to CLIProxyAPI Management API.
- * 
- * For POST (create): Adds new provider entry to openai-compatibility list.
- * For PATCH (update): Updates existing provider entry in openai-compatibility list.
- * 
- * @param providerData - Provider configuration data
- * @param operation - "create" or "update"
- * @returns Sync status and optional error message
+ * openai-compatible → named-list; all other apiTypes → flat-list.
  */
 export async function syncCustomProviderToProxy(
   providerData: SyncProviderData,
@@ -76,6 +77,8 @@ export async function syncCustomProviderToProxy(
 ): Promise<SyncResult> {
   const managementUrl = env.CLIPROXYAPI_MANAGEMENT_URL;
   const secretKey = env.MANAGEMENT_API_KEY;
+  const apiType: CustomProviderApiType = providerData.apiType ?? "openai-compatible";
+  const managementPath = API_TYPE_MANAGEMENT_PATH[apiType];
 
   if (!secretKey) {
     return {
@@ -85,93 +88,12 @@ export async function syncCustomProviderToProxy(
   }
 
   try {
-    let currentList: ManagementProviderEntry[];
-
-    if (prefetchedConfig) {
-      currentList = prefetchedConfig;
-    } else {
-      const getRes = await fetchWithTimeout(`${managementUrl}/openai-compatibility`, {
-        headers: { "Authorization": `Bearer ${secretKey}` }
-      });
-
-      if (!getRes.ok) {
-        await getRes.body?.cancel();
-        logger.error({ status: getRes.status }, "Failed to fetch current config from Management API");
-        return {
-          syncStatus: "failed",
-          syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
-        };
-      }
-
-      const configData = await getRes.json() as Record<string, unknown>;
-      const openAiCompatibility = configData["openai-compatibility"];
-      currentList = Array.isArray(openAiCompatibility)
-        ? openAiCompatibility.filter(isManagementProviderEntry)
-        : [];
-    }
-
-    // Keyless providers (e.g. local Ollama) have no enabled keys: keep the
-    // Management API payload shape stable with a single empty entry.
-    const apiKeyEntries = providerData.apiKeyEntries.length > 0
-      ? providerData.apiKeyEntries
-      : [{ apiKey: "" }];
-
-    const newEntry = {
-      name: providerData.providerId,
-      prefix: providerData.prefix,
-      "base-url": providerData.baseUrl,
-      "api-key-entries": apiKeyEntries.map(entry => ({
-        "api-key": entry.apiKey,
-        ...(entry.weight !== undefined && entry.weight !== null ? { weight: entry.weight } : {}),
-        ...((entry.proxyUrl ?? providerData.proxyUrl) ? { "proxy-url": entry.proxyUrl ?? providerData.proxyUrl } : {})
-      })),
-      models: providerData.models.map(m => ({ name: m.upstreamName, alias: m.alias })),
-      "excluded-models": providerData.excludedModels.map(e => e.pattern),
-      ...(providerData.headers ? { headers: providerData.headers } : {})
-    };
-
-    let newList: unknown[];
-    if (operation === "create") {
-      newList = [...currentList, newEntry];
-    } else {
-      // Update: replace existing entry, or append if not found (e.g. after proxy restart)
-      const existingIndex = currentList.findIndex(
-        (entry) => entry.name === providerData.providerId
-      );
-      if (existingIndex >= 0) {
-        newList = currentList.map((entry) =>
-          entry.name === providerData.providerId ? newEntry : entry
-        );
-      } else {
-        newList = [...currentList, newEntry];
-      }
-    }
-
-    logger.info({ operation, providerId: providerData.providerId, entryCount: newList.length }, "Syncing provider to CLIProxyAPI");
-
-    const putRes = await fetchWithTimeout(`${managementUrl}/openai-compatibility`, {
-      method: "PUT",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${secretKey}` 
-      },
-      body: JSON.stringify(newList)
-    });
-
-    if (!putRes.ok) {
-      const errorBody = await putRes.text().catch(() => "unreadable");
-      logger.error({ status: putRes.status, errorBody }, `Failed to sync custom provider to Management API (${operation})`);
-      return {
-        syncStatus: "failed",
-        syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
-      };
-    }
+    const result = isFlatListType(apiType)
+      ? await syncFlatList({ managementUrl, secretKey, managementPath, providerData, operation, prefetchedConfig })
+      : await syncNamedList({ managementUrl, secretKey, managementPath, providerData, operation, prefetchedConfig });
 
     invalidateProxyModelsCache();
-
-    return {
-      syncStatus: "ok"
-    };
+    return result;
 
   } catch (syncError) {
     logger.error({ err: syncError }, `Failed to sync custom provider to Management API (${operation})`);
@@ -180,4 +102,199 @@ export async function syncCustomProviderToProxy(
       syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
     };
   }
+}
+
+interface NamedListSyncArgs {
+  managementUrl: string;
+  secretKey: string;
+  managementPath: string;
+  providerData: SyncProviderData;
+  operation: "create" | "update";
+  prefetchedConfig?: ManagementProviderEntry[];
+}
+
+async function syncNamedList({
+  managementUrl, secretKey, managementPath, providerData, operation, prefetchedConfig,
+}: NamedListSyncArgs): Promise<SyncResult> {
+  let currentList: ManagementProviderEntry[];
+
+  if (prefetchedConfig) {
+    currentList = prefetchedConfig;
+  } else {
+    const getRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
+      headers: { "Authorization": `Bearer ${secretKey}` }
+    });
+
+    if (!getRes.ok) {
+      await getRes.body?.cancel();
+      logger.error({ status: getRes.status }, "Failed to fetch current config from Management API");
+      return {
+        syncStatus: "failed",
+        syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
+      };
+    }
+
+    const configData = await getRes.json() as Record<string, unknown>;
+    const listKey = managementPath.replace(/^\//, "");
+    const listData = configData[listKey];
+    currentList = Array.isArray(listData)
+      ? listData.filter(isManagementProviderEntry)
+      : [];
+  }
+
+  // Keyless providers (e.g. local Ollama) have no enabled keys: keep the
+  // Management API payload shape stable with a single empty entry.
+  const apiKeyEntries = providerData.apiKeyEntries.length > 0
+    ? providerData.apiKeyEntries
+    : [{ apiKey: "" }];
+
+  const newEntry = {
+    name: providerData.providerId,
+    prefix: providerData.prefix,
+    "base-url": providerData.baseUrl,
+    "api-key-entries": apiKeyEntries.map(entry => ({
+      "api-key": entry.apiKey,
+      ...(entry.weight !== undefined && entry.weight !== null ? { weight: entry.weight } : {}),
+      ...((entry.proxyUrl ?? providerData.proxyUrl) ? { "proxy-url": entry.proxyUrl ?? providerData.proxyUrl } : {})
+    })),
+    models: providerData.models.map(m => ({ name: m.upstreamName, alias: m.alias })),
+    "excluded-models": providerData.excludedModels.map(e => e.pattern),
+    ...(providerData.headers ? { headers: providerData.headers } : {})
+  };
+
+  let newList: unknown[];
+  if (operation === "create") {
+    newList = [...currentList, newEntry];
+  } else {
+    // Update: replace existing entry, or append if not found (e.g. after proxy restart)
+    const existingIndex = currentList.findIndex(
+      (entry) => entry.name === providerData.providerId
+    );
+    if (existingIndex >= 0) {
+      newList = currentList.map((entry) =>
+        entry.name === providerData.providerId ? newEntry : entry
+      );
+    } else {
+      newList = [...currentList, newEntry];
+    }
+  }
+
+  logger.info({ operation, providerId: providerData.providerId, entryCount: newList.length }, "Syncing provider to CLIProxyAPI (named-list)");
+
+  const putRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${secretKey}`
+    },
+    body: JSON.stringify(newList)
+  });
+
+  if (!putRes.ok) {
+    const errorBody = await putRes.text().catch(() => "unreadable");
+    logger.error({ status: putRes.status, errorBody }, `Failed to sync custom provider to Management API (${operation})`);
+    return {
+      syncStatus: "failed",
+      syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
+    };
+  }
+
+  return { syncStatus: "ok" };
+}
+
+interface FlatListSyncArgs {
+  managementUrl: string;
+  secretKey: string;
+  managementPath: string;
+  providerData: SyncProviderData;
+  operation: "create" | "update";
+  prefetchedConfig?: ManagementProviderEntry[];
+}
+
+/**
+ * Entry key for flat-list providers: the routing prefix if set, otherwise the
+ * providerId. Legacy flat lists may also key by `name`, so update logic
+ * checks both.
+ */
+function flatListEntryKey(providerData: SyncProviderData): string {
+  return providerData.prefix || providerData.providerId;
+}
+
+async function syncFlatList({
+  managementUrl, secretKey, managementPath, providerData, operation, prefetchedConfig,
+}: FlatListSyncArgs): Promise<SyncResult> {
+  let currentList: ManagementProviderEntry[];
+
+  if (prefetchedConfig) {
+    currentList = prefetchedConfig;
+  } else {
+    const getRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
+      headers: { "Authorization": `Bearer ${secretKey}` }
+    });
+
+    if (!getRes.ok) {
+      await getRes.body?.cancel();
+      logger.error({ status: getRes.status }, "Failed to fetch flat list from Management API");
+      return {
+        syncStatus: "failed",
+        syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
+      };
+    }
+
+    const configData = await getRes.json() as Record<string, unknown>;
+    const listKey = managementPath.replace(/^\//, "");
+    const listData = configData[listKey];
+    currentList = Array.isArray(listData)
+      ? listData.filter(isManagementProviderEntry)
+      : [];
+  }
+
+  const entryKey = flatListEntryKey(providerData);
+
+  // Keyless providers get a single empty-key entry.
+  const apiKeyEntries = providerData.apiKeyEntries.length > 0
+    ? providerData.apiKeyEntries
+    : [{ apiKey: "" }];
+
+  // Flat-list entry: shallow shape, no nested api-key-entries.
+  const firstKey = apiKeyEntries[0]!;
+  const newEntry: Record<string, unknown> = {
+    name: entryKey,
+    "api-key": firstKey.apiKey,
+    ...(firstKey.weight !== undefined && firstKey.weight !== null ? { weight: firstKey.weight } : {}),
+  };
+
+  let newList: unknown[];
+  if (operation === "create") {
+    newList = [...currentList, newEntry];
+  } else {
+    // Update: remove any existing entry keyed by entryKey OR legacy name, then add new
+    const filtered = currentList.filter((entry) => {
+      const entryName = typeof entry.name === "string" ? entry.name : undefined;
+      return entryName !== entryKey && entryName !== providerData.providerId;
+    });
+    newList = [...filtered, newEntry];
+  }
+
+  logger.info({ operation, providerId: providerData.providerId, entryKey, entryCount: newList.length }, "Syncing provider to CLIProxyAPI (flat-list)");
+
+  const putRes = await fetchWithTimeout(`${managementUrl}${managementPath}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${secretKey}`
+    },
+    body: JSON.stringify(newList)
+  });
+
+  if (!putRes.ok) {
+    const errorBody = await putRes.text().catch(() => "unreadable");
+    logger.error({ status: putRes.status, errorBody }, `Failed to sync flat-list provider to Management API (${operation})`);
+    return {
+      syncStatus: "failed",
+      syncMessage: `Backend sync failed - provider ${operation === "create" ? "created" : "updated"} but may not work immediately`
+    };
+  }
+
+  return { syncStatus: "ok" };
 }

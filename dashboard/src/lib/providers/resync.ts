@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { decryptProviderKey } from "@/lib/providers/encrypt";
 import { syncCustomProviderToProxy, type SyncProviderKeyEntry } from "@/lib/providers/custom-provider-sync";
+import { type CustomProviderApiType } from "@/lib/providers/api-types";
 import { invalidateProxyModelsCache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 
@@ -68,6 +69,8 @@ export async function resyncCustomProviders(userId?: string): Promise<ResyncResu
         headers: provider.headers as Record<string, string> | null,
         models: provider.models,
         excludedModels: provider.excludedModels,
+        apiType: provider.apiType as CustomProviderApiType,
+        cloak: provider.cloak,
       }, "update");
 
       results.push({ providerId: provider.providerId, name: provider.name, status: syncStatus, reason: syncMessage });
